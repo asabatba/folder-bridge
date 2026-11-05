@@ -1,0 +1,7 @@
+# Keep source and documentation consistent across Windows and WSL.
+* text=auto eol=lf
+
+# Do not treat binary artifacts as text if intentionally added later.
+*.exe binary
+*.png binary
+*.ico binary

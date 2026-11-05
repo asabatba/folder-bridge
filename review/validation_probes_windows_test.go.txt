@@ -1,0 +1,108 @@
+//go:build windows
+
+package main
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestReviewRejectForeignHostStatus(t *testing.T) {
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.cfg = Config{Mode: "join", Enabled: true, Invite: "folderbridge://example.invalid/REVIEW-PLACEHOLDER"}
+	r := httptest.NewRequest(http.MethodGet, "http://untrusted.example:47831/api/status", nil)
+	w := httptest.NewRecorder()
+	a.uiHandler().ServeHTTP(w, r)
+	if w.Code == http.StatusOK && strings.Contains(w.Body.String(), "REVIEW-PLACEHOLDER") {
+		t.Fatal("foreign Host accepted: status discloses pairing invite without Origin or Host validation")
+	}
+}
+
+func TestReviewCaseOnlyRenameConverges(t *testing.T) {
+	f := newSyncFixture(t)
+	writeTestFile(t, f.clientDir, "notes.txt", "important contents")
+	f.sync(t)
+	if err := os.Rename(filepath.Join(f.clientDir, "notes.txt"), filepath.Join(f.clientDir, "Notes.txt")); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	for i := 0; i < 3; i++ {
+		f.base, _, err = syncFolders(context.Background(), f.clientDir, f.peer, f.base, f.scanner, false, func(string) {})
+	}
+	if err != nil {
+		t.Fatalf("case-only rename still fails after 3 cycles: %v", err)
+	}
+	for _, root := range []string{f.clientDir, f.hostDir} {
+		if got := readTestFile(t, root, "Notes.txt"); got != "important contents" {
+			t.Fatalf("contents lost: %q", got)
+		}
+	}
+}
+
+func TestReviewRejectJunctionRoot(t *testing.T) {
+	f := newSyncFixture(t)
+	writeTestFile(t, f.clientDir, "important.txt", "important contents")
+	f.sync(t)
+	// Preserve the configured pathname and its baseline, replacing only the
+	// directory itself with a junction to its relocated, unchanged contents.
+	target := filepath.Join(t.TempDir(), "relocated")
+	if err := os.Rename(f.clientDir, target); err != nil {
+		t.Fatal(err)
+	}
+	alias := f.clientDir
+	out, err := exec.Command("cmd.exe", "/c", "mklink", "/J", alias, target).CombinedOutput()
+	if err != nil {
+		t.Fatalf("create junction: %v: %s", err, out)
+	}
+	defer os.Remove(alias)
+	root, err := validateFolder(alias, t.TempDir())
+	if err != nil {
+		return
+	}
+	manifest, err := NewScanner().ScanManifest(root)
+	if err != nil {
+		return
+	}
+	if len(manifest.Files) != 0 {
+		return
+	}
+	_, _, err = syncFolders(context.Background(), root, f.peer, f.base, NewScanner(), false, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.hostDir, "important.txt")); os.IsNotExist(err) {
+		t.Fatal("junction root accepted as empty and previously synced peer file was deleted")
+	}
+}
+
+func TestReviewPrivateSettingsAlias(t *testing.T) {
+	parent := t.TempDir()
+	home := filepath.Join(parent, "settings")
+	writeTestFile(t, home, "config.json", "REVIEW-PLACEHOLDER-PRIVATE-SETTINGS")
+	alias := filepath.Join(t.TempDir(), "alias")
+	out, err := exec.Command("cmd.exe", "/c", "mklink", "/J", alias, parent).CombinedOutput()
+	if err != nil {
+		t.Fatalf("create junction: %v: %s", err, out)
+	}
+	defer os.Remove(alias)
+	root, err := validateFolder(filepath.Join(alias, "settings"), home)
+	if err != nil {
+		return
+	}
+	manifest, err := NewScanner().ScanManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exposed := manifest.Files["config.json"]; exposed {
+		t.Fatal("junction ancestor bypassed private-settings protection; config.json is eligible for sync")
+	}
+}

@@ -1,0 +1,105 @@
+package main
+
+const pageHTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FolderBridge — Local folder sync</title>
+<style>
+:root { color-scheme:light; --bg:#f7f8fa; --panel:white; --text:#17212c; --muted:#667483; --border:#dce2e8; --accent:#1768ba; }
+* {box-sizing:border-box} body {margin:0; background:var(--bg); color:var(--text); font:14px/1.55 system-ui,Segoe UI,Arial,sans-serif}
+main {max-width:760px; margin:35px auto; padding:0 18px 35px} h1{margin:0;font-size:27px;letter-spacing:-.6px} h2{font-size:16px;margin:0 0 15px}
+p{margin:7px 0} .muted,.hint{color:var(--muted)} .hint{font-size:12px;margin-top:5px}
+.panel{border:1px solid var(--border);border-radius:12px;background:var(--panel);margin-top:16px;padding:19px 21px}
+.status{display:flex;align-items:center;gap:9px;font-weight:650} .dot{width:9px;height:9px;border-radius:50%;background:#7c8895} .dot.ok{background:#168558} .dot.bad{background:#c74747}.dot.paused{background:#c18422}
+label{display:block;font-weight:600;margin:15px 0 5px} input[type=text],textarea{display:block;width:100%;border:1px solid #bac7d2;border-radius:6px;font:inherit;padding:10px 11px;color:var(--text)}
+textarea{min-height:77px;resize:vertical;overflow-wrap:anywhere;font-size:12px}
+.modes{display:flex;gap:20px;margin:7px 0 15px}.modes label{margin:0;cursor:pointer}
+button{background:var(--accent);color:white;border:1px solid var(--accent);border-radius:7px;padding:9px 13px;font:600 13px system-ui;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}button.secondary{background:white;color:#253b55;border-color:#bcc8d4}button.critical{color:#a42c2c}button:hover{filter:brightness(.95)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:17px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.metric{background:#f6f8fa;border-radius:7px;padding:9px}.metric strong{font-size:22px;display:block} .metric span{font-size:12px;color:var(--muted)}
+#errors{white-space:pre-wrap;overflow-wrap:anywhere;color:#a42c2c;padding-top:8px}#links{display:grid;gap:10px} .linkbox{display:flex;gap:8px;align-items:flex-start}
+.linkbox textarea{flex:1}.linkbox button{white-space:nowrap}.events{list-style:none;padding:0;margin:4px 0;max-height:200px;overflow:auto}.events li{padding:5px 0;border-bottom:1px solid #eef0f2;font-family:Consolas,monospace;font-size:12px;overflow-wrap:anywhere}
+.small{font-size:12px} #message{margin-top:10px;color:var(--muted)}
+@media(max-width:520px){.grid{grid-template-columns:repeat(2,1fr)}.linkbox{flex-direction:column}.linkbox textarea{width:100%}}
+</style></head>
+<body><main>
+<h1>FolderBridge <span class="small muted">v3.2</span></h1><p class="muted">Private, two-computer folder synchronization over your local network. No cloud account.</p>
+<section class="panel"><div class="status"><span class="dot" id="dot"></span><span id="state">Loading...</span></div>
+<p class="small muted">Last completed scan: <span id="last">Never</span> · Event-driven changes · 60-second safety scan</p><div id="errors"></div>
+<div class="grid"><div class="metric"><strong id="uploads">0</strong><span>Uploads, last scan</span></div>
+<div class="metric"><strong id="downloads">0</strong><span>Downloads, last scan</span></div>
+<div class="metric"><strong id="conflicts">0</strong><span>Conflicts, last scan</span></div><div class="metric"><strong id="batches">0</strong><span>Batched requests</span></div><div class="metric"><strong id="renames">0</strong><span>Moves without transfer</span></div></div><p class="small muted" id="indexstats">Local hash index: waiting for first scan</p></section>
+<section class="panel"><h2>1. Configure this computer</h2>
+<div class="modes"><label><input type="radio" name="mode" value="host" checked> Host folder</label><label><input type="radio" name="mode" value="join"> Join another PC</label></div>
+<p class="hint" id="explain">Choose Host on the first PC. Choose Join on the second PC.</p>
+<label for="folder">Local folder path</label><input type="text" id="folder" placeholder="C:\Users\you\Documents\Shared" autocomplete="off" spellcheck="false">
+<p class="hint">Paste a folder path from File Explorer. The folder is created if needed. Subfolders and files sync; empty directories are not replicated. Use .gitignore or .folderbridgeignore in this folder to exclude files.</p>
+<div id="joinfields" style="display:none"><label for="invite">Pairing link from host PC</label><textarea id="invite" spellcheck="false" placeholder="folderbridge://192.168.1.5:48713/...?... "></textarea></div>
+<div class="actions"><button id="start">Save &amp; start</button><button class="secondary" id="stop">Stop syncing</button><button class="secondary" id="sync">Sync now</button><button class="secondary" id="pause">Pause syncing</button><button class="secondary critical" id="bulk" style="display:none">Approve bulk deletions</button><button class="secondary critical" id="quit">Quit app</button></div>
+<div id="message"></div></section>
+<section class="panel" id="pairpanel" style="display:none"><h2>2. Pair the second computer</h2>
+<p class="hint">Run the same app on your second PC, choose Join, paste one of these links, and select its local folder. Keep pairing links private.</p><div id="links"></div>
+<p class="hint">If several network addresses are shown, use the one reachable from your second PC. Host PC must be online. Windows Firewall may require an authorized inbound rule for TCP 48713.</p></section>
+<section class="panel"><h2>Windows integration</h2>
+<label style="font-weight:normal;margin:0"><input type="checkbox" id="autostart"> Launch FolderBridge when I sign in to Windows</label>
+<p class="hint">Starts minimized to the system tray for this Windows user only. No administrator rights required. Right-click the tray icon to open the dashboard, open the folder, pause, or quit.</p>
+<div id="startupmessage" class="small muted"></div></section>
+<section class="panel"><h2>Ignore rule inspector</h2>
+<p class="hint">Enter a path relative to the configured sync folder (for example <code>src/cache/data.json</code>). The joining PC checks both computers' rules; the hosting PC checks only its own.</p>
+<label for="inspectpath">Relative file path</label><input type="text" id="inspectpath" placeholder="src/cache/data.json" spellcheck="false">
+<div class="actions"><button class="secondary" id="inspect">Check ignore rules</button></div>
+<pre id="inspectresult" style="white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.6 Consolas,monospace"></pre>
+</section>
+<section class="panel"><h2>Activity</h2><ul id="events" class="events"><li class="muted">No activity yet</li></ul></section>
+<p class="small muted">Encrypted TLS 1.3 with a pinned server certificate · Adaptive small-file batches · .gitignore rules · File integrity checks · Delete propagation · Concurrent edits preserved as conflict copies.</p>
+</main>
+<script>
+const byId = x=>document.getElementById(x);
+let initialized=false, lastLinkList='';
+function mode(){return document.querySelector('input[name=mode]:checked').value}
+function updateMode(){byId('joinfields').style.display=mode()==='join'?'block':'none';byId('explain').textContent=mode()==='join'?'Paste the pairing link from the host PC.':'Share this PC\'s folder with one other PC.'}
+for(const el of document.querySelectorAll('input[name=mode]'))el.addEventListener('change',updateMode);
+function showMessage(s, bad=false){byId('message').textContent=s;byId('message').style.color=bad?'#b12e2e':'#566579'}
+async function post(path, payload={}){
+ const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+ if(!response.ok)throw new Error((await response.text()).trim());return response;
+}
+byId('start').onclick=async()=>{try{await post('/api/config',{mode:mode(),folder:byId('folder').value,invite:byId('invite').value.trim(),enabled:true});showMessage('Saved.');await refresh()}catch(e){showMessage(e.message,true)}};
+byId('stop').onclick=async()=>{try{await post('/api/config',{mode:'off',folder:byId('folder').value,invite:byId('invite').value.trim(),enabled:false});showMessage('Sync stopped.');await refresh()}catch(e){showMessage(e.message,true)}};
+byId('pause').onclick=async()=>{try{await post('/api/pause',{paused:!window.currentPaused});showMessage(window.currentPaused?'Paused.':'Resumed.');await refresh()}catch(e){showMessage(e.message,true)}};
+byId('autostart').onchange=async()=>{const enabled=byId('autostart').checked;try{await post('/api/autostart',{enabled});byId('startupmessage').textContent=enabled?'Launch at login enabled.':'Launch at login disabled.'}catch(e){byId('autostart').checked=!enabled;byId('startupmessage').textContent=e.message}};
+byId('sync').onclick=async()=>{try{await post('/api/sync');showMessage('Sync requested.')}catch(e){showMessage(e.message,true)}};
+byId('bulk').onclick=async()=>{if(!confirm('Allow many file deletions to propagate between these two computers once? Verify neither sync folder is empty by mistake.'))return;try{await post('/api/approve-bulk');showMessage('Large deletion approved for one sync cycle.')}catch(e){showMessage(e.message,true)}};
+byId('quit').onclick=async()=>{if(!confirm('Quit FolderBridge? Automatic sync will stop.'))return;await post('/api/quit');showMessage('FolderBridge has exited. You can close this tab.')};
+byId('inspect').onclick=async()=>{
+ const el=byId('inspectresult');el.textContent='Checking...';
+ try{
+  const response=await fetch('/api/ignore?path='+encodeURIComponent(byId('inspectpath').value.trim()),{cache:'no-store'});
+  if(!response.ok)throw new Error((await response.text()).trim());
+  const d=await response.json();
+  const describe=(name,v)=>{
+    if(!v)return name+': unavailable';
+    const rule=v.source?(v.source+(v.line?':'+v.line:'')+(v.pattern?'  '+v.pattern:'')):'No matching rule';
+    return name+': '+(v.ignored?'IGNORED':'ALLOWED')+'\n  '+rule+'\n  '+v.reason;
+  };
+  el.textContent=describe('This PC',d.local)+'\n\n'+describe('Other PC',d.remote)+'\n'+d.remoteStatus+'\n\nEffective: '+(d.effective?'IGNORED':'not ignored by available rules');
+ }catch(e){el.textContent=e.message}
+};
+async function refresh(){
+ try{const response=await fetch('/api/status',{cache:'no-store'});const d=await response.json();
+  if(!initialized){const selected=d.mode==='join'?'join':'host';document.querySelector('input[name=mode][value='+selected+']').checked=true;byId('folder').value=d.folder||'';byId('invite').value=d.invite||'';updateMode();initialized=true}
+  byId('state').textContent=d.state||'Stopped';byId('dot').className='dot '+(/Up to date|Hosting/.test(d.state)?'ok':/Error|Partial/.test(d.state)?'bad':d.paused?'paused':'');window.currentPaused=!!d.paused;byId('pause').textContent=d.paused?'Resume syncing':'Pause syncing';byId('pause').disabled=!d.enabled||d.mode==='off';byId('sync').disabled=d.paused||!d.enabled||d.mode!=='join';byId('autostart').checked=!!d.autostart;
+  byId('errors').textContent=d.error||'';byId('bulk').style.display=d.error?.startsWith('Safety stop:')?'inline-block':'none';byId('last').textContent=d.lastSync?.startsWith('0001-')?'Never':(d.lastSync||'Never');
+  byId('indexstats').textContent='Local index: '+(d.index?.files||0)+' files · '+(d.index?.reused||0)+' reused hashes · '+(d.index?.hashed||0)+' newly hashed · '+(d.index?.restored||0)+' restored after startup';
+  byId('uploads').textContent=d.result?.uploaded||0;byId('downloads').textContent=d.result?.downloaded||0;byId('conflicts').textContent=d.result?.conflicts||0;byId('renames').textContent=d.result?.renames||0;byId('batches').textContent=(d.result?.batchUploads||0)+(d.result?.batchDownloads||0);
+  byId('pairpanel').style.display=d.enabled&&d.mode==='host'?'block':'none';
+  const links=JSON.stringify(d.links||[]);
+  if(links!==lastLinkList){lastLinkList=links;byId('links').replaceChildren();
+   (d.links||[]).forEach(link=>{const outer=document.createElement('div');outer.className='linkbox';const field=document.createElement('textarea');field.readOnly=true;field.value=link;field.rows=3;const btn=document.createElement('button');btn.className='secondary';btn.textContent='Copy link';btn.onclick=async()=>{try{await navigator.clipboard.writeText(link);btn.textContent='Copied'}catch(e){field.select();document.execCommand('copy');btn.textContent='Copied'}};outer.append(field,btn);byId('links').append(outer)});
+   if(!(d.links||[]).length)byId('links').textContent='No LAN IPv4 address detected. Check the network adapter.';
+  }
+  byId('events').replaceChildren();(d.events?.length?d.events:['No activity yet']).forEach(event=>{let li=document.createElement('li');li.textContent=event;byId('events').appendChild(li)})
+ }catch(e){byId('state').textContent='Not connected to app'}
+}
+refresh();setInterval(refresh,2500);
+</script></body></html>`

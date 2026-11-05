@@ -1,0 +1,24 @@
+# Local build products and validation artifacts
+/dist/
+/FolderBridge.exe
+/*.test
+/*.test.exe
+/coverage
+/coverage.out
+/coverage.html
+
+# Local application state and pairing/TLS secrets
+/config.json
+/peer-cert.pem
+/peer-key.pem
+/baseline-*.json
+/index-*.json
+.fb-part-*
+.env
+.env.*
+!.env.example
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
