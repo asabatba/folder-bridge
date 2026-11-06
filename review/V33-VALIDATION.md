@@ -1,5 +1,9 @@
 # v3.3 implementation and validation
 
+This records the initial v3.3 implementation at commit `3871d66`; root-package
+paths and test counts below are historical. The subsequent approved module
+extraction and current checks are in [REFACTOR-VALIDATION.md](REFACTOR-VALIDATION.md).
+
 ## Status
 
 The self-updater and approved focused refactor are implemented and automated

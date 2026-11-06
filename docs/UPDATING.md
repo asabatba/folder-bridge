@@ -236,16 +236,22 @@ embedded trust key. No production key is checked into the source tree.
 
 ## Project layout and verification
 
-- `main.go`: executable startup, health reporting and shutdown orchestration.
-- `app.go`, `config.go`, `lifecycle.go`: app state, settings and sync lifecycle.
-- `dashboard.go`, `ui.go`, `web/dashboard.html`: existing local dashboard and
-  embedded assets, without a new UI framework.
-- `updates.go`: narrow app adapter for updater controls and graceful drain.
+- `main.go`: thin executable launcher calling `app.Run()`; `go build .` is unchanged.
+- `internal/app`: startup/recovery/health/shutdown orchestration, private settings,
+  dashboard, tray/autostart and the updater adapter. Embeds `web/dashboard.html`
+  relative to this package (`internal/app/web/dashboard.html` in the repository).
+- `internal/syncengine`: owns peer lifecycle, watchers, scanners/indexes,
+  reconciliation, transfers, history and baseline persistence. `Quiesce` gates new
+  work, drains admitted transfers without cancellation, rejects unpersisted
+  baseline state and resumes synchronization if handoff fails.
+- `internal/fileops`: shared checked paths, link/junction rejection, hashing,
+  guarded staged writes, atomic metadata replacement and no-overwrite moves.
 - `internal/update`: trust, streaming download, staging, helper transaction,
-  authenticated health and recovery. No dependency on the synchronization engine.
+  authenticated health and recovery. No dependency on the app or sync engine.
 - `cmd/folderbridge-updater`: standalone installation/recovery executable.
 - `cmd/folderbridge-release`: offline signing and artifact verification tooling.
-- Existing synchronization/network/file modules remain in the root package.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for interfaces and dependency direction.
 
 `go test ./...` includes Windows-native subprocess, real executable-lock, ACL,
 junction, helper-replacement, authenticated-health and recovery integration tests
@@ -254,7 +260,9 @@ copy, alter production configuration, terminate unrelated processes or request
 administrator rights. Real host/client transfer tests verify update drain and
 baseline persistence. General trust/archive/network tests also run on Linux.
 
-See `review/V33-VALIDATION.md` for executed checks and outstanding release gates.
+See [module-refactor validation](../review/REFACTOR-VALIDATION.md) for current
+checks and [v3.3 validation](../review/V33-VALIDATION.md) for updater acceptance
+coverage and outstanding release gates.
 The GitHub publication workflow, actual Windows 10 desktop, interactive tray/
 notification checks and physical power-cut validation must not be claimed as
 verified until performed.

@@ -47,7 +47,7 @@ To suspend synchronization while preserving all pairing settings, use **Pause sy
 - Tray controls: **Check for updates**, **Update available: vX.Y.Z**, **Restart to update**, and **Skip this version**. The dashboard adds versions, download status, release notes, check/result history, settings and explicit retry of quarantined failures.
 - After approval, wait for host writes and the client cycle/baseline to finish, persist state, then hand off to the standalone helper. Same-volume replacement, a durable backup/journal, authenticated 30-second initialization health and rollback protect failed updates. No administrator elevation or device-policy bypass.
 - Configuration and LAN protocol remain compatible. An unmodified v3.2 installation needs **one manual bootstrap upgrade**; it cannot discover an updater it does not contain. Subsequent signed updates use the new flow.
-- Focused source refactor: separate app/config/lifecycle/dashboard files, embedded `web/dashboard.html`, shared `internal/update`, and standalone updater/release-tool commands. `go build .` remains supported.
+- Modular source layout: a thin root `main.go`, application/UI orchestration in `internal/app`, synchronization in `internal/syncengine`, shared filesystem safety in `internal/fileops`, and the existing independent `internal/update`. The dashboard is embedded from `internal/app/web/dashboard.html`; `go build .` remains supported.
 
 **Validation:** Windows 11-native helper/lock/ACL/junction/recovery tests, real transfer-drain tests, regression tests and race detection have been run. Linux regression/trust tests also pass under WSL. The occupied-port lifecycle exclusion, production key/release setup, unexecuted GitHub publication workflow and remaining Windows 10/interactive/power-cut checks are documented in [v3.3 validation](review/V33-VALIDATION.md). This is not a claim that all release gates are complete.
 
@@ -113,7 +113,7 @@ To suspend synchronization while preserving all pairing settings, use **Pause sy
 - **Network recovery:** temporary HTTP failures (408, 429, 5xx, connection resets, truncated streams) retry up to three total attempts with 200/400 ms delays. Authentication, conflicts and integrity errors are not retried automatically within the same operation. An unreachable peer stops the scan early and is retried on the next cycle.
 - **Crash recovery:** interrupted transfers never publish half-written files. During startup, regular `.fb-part-*` files older than 24 hours are cleaned from the shared folder. The sync baseline remains the last safely saved snapshot, and the next scan reconciles the files on both PCs even if a network response was lost. Previously transferred bytes **are not resumed**; interrupted individual files are sent again.
 - **Durable metadata:** config and baselines are written via a flushed temporary file and replacement, so a process crash while saving does not replace the previous file with partial JSON. This is not a guarantee against sudden hardware failure or power loss.
-- **Testing:** interruption, checksum, retry, baseline, recovery, and stale-temp tests run on Linux. `reliability_windows_test.go` adds a real Windows locked-destination test. GitHub Actions configuration runs the suite on Windows and Linux; Windows runtime validation must still be performed on a Windows device or CI runner.
+- **Testing:** interruption, checksum, retry, baseline, recovery, and stale-temp tests run on Linux. `internal/fileops/replace_windows_test.go` contains the real Windows locked-destination test. GitHub Actions configuration runs the suite on Windows and Linux; Windows runtime validation must still be performed on a Windows device or CI runner.
 
 ### Compressed batching (v2)
 
@@ -160,7 +160,7 @@ build/
 - Watcher-triggered scans still enumerate the directory tree; unchanged contents generally reuse their hash. Changed files are transferred in full (no block-level delta synchronization).
 - Ignore pattern support covers the common Git syntax, but is not a full implementation of Git wildmatch (e.g. it does not read `.git/info/exclude` or global Git excludes).
 - You may see Windows security prompts because this is a custom **unsigned executable**. Do not override a corporate restriction to run it.
-- The current validation build was built with native Windows Go. Automated Windows tests, including the locked-destination test, and Linux tests pass; see `review/REMEDIATION.md` for commands and the occupied-port test exclusion. The Windows tray menu and login startup have **not been interactively verified on a Windows desktop**.
+- The current validation build was built with native Windows Go. Automated Windows tests, including the locked-destination test, and Linux tests pass; see [module-refactor validation](review/REFACTOR-VALIDATION.md) for current commands and the occupied-port test exclusion. The Windows tray menu and login startup have **not been interactively verified on a Windows desktop**.
 - A process crash during a multi-file batch may leave some files already committed; the next scan reconciles them. **Multi-file batches are not all-or-nothing transactions.**
 - The temporary-file namespace `.fb-part-*` is reserved anywhere inside the synchronized tree; do not use it for user files.
 
@@ -200,6 +200,6 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -H=wi
 
 These source builds deliberately have no update trust key and cannot self-update. For key-pinned production builds, offline signing, release workflows, recovery and the reorganized source layout, see [docs/UPDATING.md](docs/UPDATING.md).
 
-Updater tests are in `updates_test.go`, `internal/update/verify_test.go`, and `internal/update/install_windows_test.go`. To inspect tests and protocol implementation, see `v32_test.go`, `renames.go`, `move.go`, `watcher_windows_test.go`, `watcher_windows.go`, `changes.go`, `index.go`, `transfer.go`, `sync.go`, and `network.go`.
+See [source architecture](docs/ARCHITECTURE.md) for ownership, interfaces and dependency direction, and [module-refactor validation](review/REFACTOR-VALIDATION.md) for current checks. Tests live alongside their owning modules: app controls/update integration in `internal/app`, transfers/renames/watchers/draining in `internal/syncengine`, filesystem integrity/replacement in `internal/fileops`, and signature/archive/helper recovery in `internal/update`.
 
 **Acceptable use:** Only synchronize files and devices you are authorized to connect. A restriction on Syncthing or external file transfer may be intentional; if so, use an approved corporate transfer solution instead.
