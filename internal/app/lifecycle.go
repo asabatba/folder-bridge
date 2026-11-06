@@ -6,11 +6,12 @@ import (
 )
 
 func (c config) engineOptions() syncengine.Options {
-	return syncengine.Options{Mode: c.Mode, Folder: c.Folder, Invite: c.Invite, Secret: c.Secret, Enabled: c.Enabled, Paused: c.Paused}
+	return syncengine.Options{Mode: c.Mode, Folder: c.Folder, Invite: c.Invite, Secret: c.Secret, Session: c.Session, Name: c.Name, Enabled: c.Enabled, Paused: c.Paused}
 }
 func (a *application) startPeer() error {
 	a.mu.RLock()
 	cfg := a.cfg.engineOptions()
+	cfg.ListenAddress = a.listenAddress
 	a.mu.RUnlock()
 	return a.engine.Start(cfg)
 }
@@ -23,7 +24,7 @@ func (a *application) setPaused(paused bool) error {
 	a.mu.RLock()
 	cfg := a.cfg
 	a.mu.RUnlock()
-	if !cfg.Enabled || cfg.Mode == "off" {
+	if !cfg.Enabled || cfg.Mode != "session" {
 		return errors.New("configure and start a folder before using pause")
 	}
 	if cfg.Paused == paused {

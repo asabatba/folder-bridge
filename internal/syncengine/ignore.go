@@ -36,7 +36,7 @@ type ignoreMatcher struct {
 const maxIgnoreFileSize = 64 << 10
 const maxIgnorePolicySize = 1 << 20
 
-func isIgnoreFilename(name string) bool { return name == ".gitignore" || name == ".folderbridgeignore" }
+func isIgnoreFilename(name string) bool { return name == ".gitignore" || name == ".fbignore" }
 
 func isInternalPath(rel string) bool {
 	for _, component := range strings.Split(rel, "/") {
@@ -337,7 +337,7 @@ func (m *ignoreMatcher) Explain(rel string, isDir bool) IgnoreDecision {
 func readIgnoreFilesInDir(root, rel string) ([]ignoreFile, error) {
 	dir := filepath.Join(root, filepath.FromSlash(rel))
 	var out []ignoreFile
-	for _, filename := range []string{".folderbridgeignore", ".gitignore"} {
+	for _, filename := range []string{".fbignore", ".gitignore"} {
 		full := filepath.Join(dir, filename)
 		info, err := os.Lstat(full)
 		if os.IsNotExist(err) {

@@ -13,14 +13,15 @@ import (
 )
 
 type application struct {
-	mu        sync.RWMutex
-	controlMu sync.Mutex
-	engine    *syncengine.Engine
-	home      string
-	cfg       config
-	quit      chan struct{}
-	quitOnce  sync.Once
-	notifyFn  func(string, string, bool)
+	mu            sync.RWMutex
+	controlMu     sync.Mutex
+	engine        *syncengine.Engine
+	home          string
+	cfg           config
+	quit          chan struct{}
+	quitOnce      sync.Once
+	notifyFn      func(string, string, bool)
+	listenAddress string // empty in production; isolated listeners in tests
 }
 
 func newApp(home string) (*application, error) {

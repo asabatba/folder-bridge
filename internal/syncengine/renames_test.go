@@ -183,7 +183,7 @@ func TestMoveRejectsOverwriteAndChangedSource(t *testing.T) {
 func TestMoveEndpointRejectsIgnoredAndUnsafePaths(t *testing.T) {
 	f := newSyncFixture(t)
 	writeTestFile(t, f.hostDir, "old.txt", "content")
-	writeTestFile(t, f.hostDir, ".folderbridgeignore", "ignored/\n")
+	writeTestFile(t, f.hostDir, ".fbignore", "ignored/\n")
 	sum := sha256.Sum256([]byte("content"))
 	hash := hex.EncodeToString(sum[:])
 	if err := f.peer.move(context.Background(), "old.txt", "ignored/new.txt", hash); err == nil {
@@ -199,7 +199,7 @@ func TestMoveEndpointRejectsIgnoredAndUnsafePaths(t *testing.T) {
 func TestExplainIgnoreRules(t *testing.T) {
 	rules := []ignoreFile{
 		{Path: ".gitignore", Text: "# comment\n*.log\n!important.log\ncache/\n"},
-		{Path: "sub/.folderbridgeignore", Text: "private*.txt\n"},
+		{Path: "sub/.fbignore", Text: "private*.txt\n"},
 	}
 	m, err := newIgnoreMatcher(rules)
 	if err != nil {
@@ -215,7 +215,7 @@ func TestExplainIgnoreRules(t *testing.T) {
 		{"debug.log", true, ".gitignore", 2, ""},
 		{"important.log", false, ".gitignore", 3, "Allowed"},
 		{"cache/test.log", true, ".gitignore", 4, "Parent"},
-		{"sub/private1.txt", true, "sub/.folderbridgeignore", 1, ""},
+		{"sub/private1.txt", true, "sub/.fbignore", 1, ""},
 		{"sub/public.txt", false, "", 0, "No matching"},
 		{".git/index", true, "FolderBridge internal policy", 0, "Internal"},
 	}
@@ -287,27 +287,17 @@ func TestLegacyPeerWithoutMoveFeatureUsesOrdinarySync(t *testing.T) {
 	}
 }
 
-func TestIgnoreInspectorCombinesPeerRules(t *testing.T) {
+func TestIgnoreInspectorUsesDeviceLocalRules(t *testing.T) {
 	f := newSyncFixture(t)
 	writeTestFile(t, f.hostDir, ".gitignore", "server-only.txt\n")
-	writeTestFile(t, f.clientDir, ".folderbridgeignore", "local-only.txt\n")
-	u, _ := url.Parse(f.server.URL)
-	pin := sha256.Sum256(f.server.TLS.Certificates[0].Certificate[0])
-	// The TLS test server uses a random port rather than FolderBridge's default.
-	invite := "folderbridge://" + u.Host + "/" + f.peer.token + "?fp=" + hex.EncodeToString(pin[:])
-	for _, path := range []string{"server-only.txt", "local-only.txt"} {
-		got, err := ExplainIgnore(context.Background(), Options{Mode: "join", Folder: f.clientDir, Invite: invite}, path)
+	writeTestFile(t, f.clientDir, ".fbignore", "local-only.txt\n")
+	for _, name := range []string{"server-only.txt", "local-only.txt"} {
+		got, err := ExplainIgnore(context.Background(), Options{Mode: "session", Folder: f.clientDir}, name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !got.Effective || got.Remote == nil || got.RemoteStatus != "Available" {
-			t.Fatalf("%s: %+v", path, got)
-		}
-		if path == "server-only.txt" && !got.Remote.Ignored {
-			t.Fatal("missing peer rule", got)
-		}
-		if path == "local-only.txt" && !got.Local.Ignored {
-			t.Fatal("missing local rule", got)
+		if got.Effective != (name == "local-only.txt") || got.Remote != nil || !strings.Contains(got.RemoteStatus, "Device-local") {
+			t.Fatalf("%s: %+v", name, got)
 		}
 	}
 }

@@ -13,10 +13,12 @@ import (
 )
 
 type config struct {
-	Mode    string `json:"mode"` // "host", "join" or "off"
+	Mode    string `json:"mode"` // "session" or "off"; old roles require fresh pairing
 	Folder  string `json:"folder"`
 	Invite  string `json:"invite,omitempty"`
 	Secret  string `json:"secret,omitempty"`
+	Session string `json:"session,omitempty"`
+	Name    string `json:"name,omitempty"`
 	Enabled bool   `json:"enabled"`
 	Paused  bool   `json:"paused,omitempty"`
 }
@@ -81,45 +83,80 @@ func validateFolder(raw, home string) (string, error) {
 func (a *application) configure(req config) error {
 	a.controlMu.Lock()
 	defer a.controlMu.Unlock()
-	if req.Mode != "host" && req.Mode != "join" && req.Mode != "off" {
-		return errors.New("choose Host, Join, or Stop")
-	}
-	if req.Enabled && req.Mode != "off" {
+	a.mu.RLock()
+	old := a.cfg
+	a.mu.RUnlock()
+	next := old
+	switch req.Mode {
+	case "refresh":
+		return a.engine.RefreshMemberInvite(req.Invite)
+	case "off":
+		next.Enabled = false
+		next.Paused = false
+	case "leave":
+		next = config{Mode: "off", Folder: old.Folder, Name: old.Name}
+	case "session":
+		if old.Mode != "session" || old.Session == "" {
+			return errors.New("create or join a session first")
+		}
+		if req.Folder != "" && req.Folder != old.Folder {
+			return errors.New("leave this session before choosing another folder")
+		}
+		next.Enabled = true
+		next.Paused = false
+	case "create", "join":
+		if old.Mode == "session" && old.Session != "" {
+			return errors.New("leave the current session before creating or joining another")
+		}
 		folder, err := validateFolder(req.Folder, a.home)
 		if err != nil {
 			return err
 		}
-		req.Folder = folder
-	}
-	if req.Mode == "join" && req.Enabled {
-		if err := syncengine.ValidateInvite(req.Invite); err != nil {
-			return err
-		}
-	}
-	a.stopPeer()
-	if req.Mode == "host" {
-		// Do not regenerate the token when restarting the same shared folder.
-		a.mu.RLock()
-		secret := a.cfg.Secret
-		a.mu.RUnlock()
-		if secret == "" {
-			var err error
-			secret, err = newToken()
-			if err != nil {
+		invite := ""
+		if req.Mode == "join" {
+			invite = strings.TrimSpace(req.Invite)
+			if err := syncengine.ValidateInvite(invite); err != nil {
 				return err
 			}
 		}
-		req.Secret = secret
-	} else {
-		a.mu.RLock()
-		req.Secret = a.cfg.Secret
-		a.mu.RUnlock()
+		credentials, err := a.engine.PrepareSession(folder, invite)
+		if err != nil {
+			return err
+		}
+		// Preserve legacy settings for a deliberate manual rollback. No old baseline
+		// is imported, renamed, deleted or used as a new session's deletion history.
+		if old.Mode == "host" || old.Mode == "join" {
+			backup := filepath.Join(a.home, "legacy-config.json")
+			if _, err := os.Stat(backup); errors.Is(err, os.ErrNotExist) {
+				data, err := json.MarshalIndent(old, "", "  ")
+				if err != nil {
+					return err
+				}
+				if err = fileops.WriteAtomically(backup, data); err != nil {
+					return err
+				}
+			} else if err != nil {
+				return err
+			}
+		}
+		name := strings.TrimSpace(req.Name)
+		if len(name) > 128 {
+			return errors.New("computer name must be at most 128 bytes")
+		}
+		next = config{Mode: "session", Folder: folder, Session: credentials.ID, Secret: credentials.Secret, Name: name, Enabled: true}
+	default:
+		return errors.New("choose Create session, Join session, Resume, Stop, or Leave")
 	}
+	a.stopPeer()
 	a.mu.Lock()
-	a.cfg = req
+	a.cfg = next
 	err := a.saveConfig()
+	if err != nil {
+		a.cfg = old
+	}
 	a.mu.Unlock()
 	if err != nil {
+		_ = a.startPeer()
 		return err
 	}
 	return a.startPeer()

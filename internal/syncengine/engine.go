@@ -1,38 +1,40 @@
-// Package syncengine owns peer operation, reconciliation, watching and durable
+// Package syncengine owns peer sessions, reconciliation, watching and durable
 // synchronization state. It does not depend on the dashboard or tray.
 package syncengine
 
 import (
 	"context"
 	"fmt"
-	"folderbridge/internal/fileops"
-	"net/http"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
+
+	"folderbridge/internal/fileops"
 )
 
-// Options describes a synchronization session, not its persisted app settings.
+// Options describes one explicitly prepared equal-peer session.
 type Options struct {
 	Mode, Folder, Invite, Secret string
-	Enabled, Paused              bool
+	Session, Name                string
+	// ListenAddress defaults to the LAN port; callers can isolate instances/tests.
+	ListenAddress   string
+	Enabled, Paused bool
 }
 
-// Status is a detached snapshot: callers never acquire engine/scanner locks.
 type Status struct {
 	State, Error  string
+	Session       string
+	Members       []MemberStatus
 	LastSync      time.Time
 	Result        SyncResult
 	Index         ScanStats
 	Links, Events []string
 }
 
-// Engine owns synchronization contexts, servers, scanners and persisted state.
-// Start and Stop serialize lifecycle transitions internally.
 type Engine struct {
 	mu               sync.RWMutex
 	controlMu        sync.Mutex
-	syncMu           sync.Mutex
 	home             string
 	cfg              Options
 	state, lastError string
@@ -42,22 +44,17 @@ type Engine struct {
 	hostScanner      *scanner
 	allowMassDelete  bool
 	events           []string
-	fingerprint      string
-	hostServer       *http.Server
-	cancel           context.CancelFunc
+	session          *sessionRuntime
 	syncSignal       chan struct{}
 	notifyFn         func(string, string, bool)
 }
 
-// New creates an idle engine. Notifications are delivered outside engine locks.
 func New(home string, notify func(string, string, bool)) *Engine {
 	return &Engine{home: home, state: "Stopped", syncSignal: make(chan struct{}, 1), notifyFn: notify}
 }
 
-// ValidateInvite checks an invitation without exposing peer transport internals.
-func ValidateInvite(raw string) error { _, err := parseInvite(raw); return err }
+func ValidateInvite(raw string) error { _, err := parseSessionInvite(raw); return err }
 
-// IgnoreExplanation combines the local and peer policies without changing them.
 type IgnoreExplanation struct {
 	Local        IgnoreDecision  `json:"local"`
 	Remote       *IgnoreDecision `json:"remote,omitempty"`
@@ -65,66 +62,50 @@ type IgnoreExplanation struct {
 	RemoteStatus string          `json:"remoteStatus"`
 }
 
-// ExplainIgnore inspects local rules and, in join mode, the peer's rules.
-// Remote unavailability is reported in the result, not as a local error.
+// ExplainIgnore evaluates this device's policy only. Another member's exclusions
+// never prohibit sharing between the other members of a session.
 func ExplainIgnore(ctx context.Context, cfg Options, rel string) (IgnoreExplanation, error) {
-	root, invite := cfg.Folder, cfg.Invite
-	if _, err := fileops.CheckedPath(root, rel); err != nil {
+	if err := ctx.Err(); err != nil {
 		return IgnoreExplanation{}, err
 	}
-	checker := newPathIgnoreChecker(root)
+	if _, err := fileops.CheckedPath(cfg.Folder, rel); err != nil {
+		return IgnoreExplanation{}, err
+	}
 	dir := filepath.ToSlash(filepath.Dir(rel))
 	if dir == "." {
 		dir = ""
 	}
-	matcher, err := checker.matcher(dir)
+	matcher, err := newPathIgnoreChecker(cfg.Folder).matcher(dir)
 	if err != nil {
 		return IgnoreExplanation{}, fmt.Errorf("local ignore policy: %w", err)
 	}
 	local := matcher.Explain(rel, false)
-	reply := IgnoreExplanation{Local: local, Effective: local.Ignored, RemoteStatus: "Unavailable in Host mode; inspect on the joining PC for both policies"}
-	if cfg.Mode == "join" {
-		reply.RemoteStatus = "Unavailable"
-		if parsed, err := parseInvite(invite); err == nil {
-			p := newPeer(parsed)
-			reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			manifest, err := p.manifest(reqCtx)
-			cancel()
-			p.Close()
-			if err != nil {
-				reply.RemoteStatus = "Could not read peer rules: " + err.Error()
-			} else if m, err := newIgnoreMatcher(manifest.IgnoreFiles); err == nil {
-				remote := m.Explain(rel, false)
-				reply.Remote = &remote
-				reply.Effective = local.Ignored || remote.Ignored
-				reply.RemoteStatus = "Available"
-			} else {
-				reply.RemoteStatus = "Invalid remote ignore policy: " + err.Error()
-			}
-		}
-	}
-	return reply, nil
+	return IgnoreExplanation{Local: local, Effective: local.Ignored, RemoteStatus: "Device-local policy; other members apply their own rules"}, nil
 }
 
-// Snapshot returns synchronization status and pairing links without live internals.
+// Snapshot reads detached status only; a long scan or transfer cannot block UI.
 func (a *Engine) Snapshot() Status {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
-	links := []string{}
-	if a.cfg.Mode == "host" && a.cfg.Enabled && a.fingerprint != "" {
-		for _, addr := range lanAddresses() {
-			links = append(links, formatInvite(addr, a.cfg.Secret, a.fingerprint))
+	out := Status{State: a.state, Error: a.lastError, Session: a.cfg.Session, LastSync: a.lastSync, Result: a.lastResult, Index: a.lastStats, Links: []string{}, Members: []MemberStatus{}, Events: append([]string{}, a.events...)}
+	s := a.session
+	a.mu.RUnlock()
+	if s != nil {
+		for _, addr := range s.self.Addresses {
+			out.Links = append(out.Links, formatSessionInvite(SessionCredentials{ID: s.cfg.Session, Secret: s.cfg.Secret}, addr, s.self.ID))
 		}
+		s.viewMu.RLock()
+		out.Members = append(out.Members, s.memberView...)
+		s.viewMu.RUnlock()
+		sort.Slice(out.Members, func(i, j int) bool {
+			if out.Members[i].Local != out.Members[j].Local {
+				return out.Members[i].Local
+			}
+			return out.Members[i].ID < out.Members[j].ID
+		})
 	}
-	stats := a.lastStats
-	if a.hostScanner != nil {
-		stats = a.hostScanner.Stats()
-	}
-	return Status{State: a.state, Error: a.lastError, LastSync: a.lastSync, Result: a.lastResult, Index: stats, Links: links, Events: append([]string{}, a.events...)}
+	return out
 }
 
-// ReportError records a failed synchronization control operation. Repeated
-// identical errors do not emit repeated notifications.
 func (a *Engine) ReportError(msg string) {
 	a.mu.Lock()
 	changed := a.lastError != msg
@@ -140,11 +121,7 @@ func (a *Engine) notify(title, msg string, warning bool) {
 		a.notifyFn(title, msg, warning)
 	}
 }
-
-// RecordEvent adds a control action to the same bounded history as transfers.
 func (a *Engine) RecordEvent(msg string) { a.addEvent(msg) }
-
-// ApproveBulkDelete authorizes one cycle, then requests reconciliation.
 func (a *Engine) ApproveBulkDelete() {
 	a.mu.Lock()
 	a.allowMassDelete = true

@@ -15,7 +15,7 @@ import (
 const uiAddress = "127.0.0.1:47831"
 
 // Version is build metadata, optionally set by the release workflow with -X.
-var Version = "3.3.0"
+var Version = "4.0.0-dev"
 
 func openBrowser() {
 	if runtime.GOOS == "windows" {

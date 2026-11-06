@@ -14,21 +14,25 @@ func (a *application) status() any {
 	defer a.mu.RUnlock()
 	status := a.engine.Snapshot()
 	return struct {
-		Version   string                `json:"version"`
-		Mode      string                `json:"mode"`
-		Folder    string                `json:"folder"`
-		Invite    string                `json:"invite"`
-		Enabled   bool                  `json:"enabled"`
-		Paused    bool                  `json:"paused"`
-		Autostart bool                  `json:"autostart"`
-		State     string                `json:"state"`
-		Error     string                `json:"error"`
-		LastSync  string                `json:"lastSync"`
-		Result    syncengine.SyncResult `json:"result"`
-		Index     syncengine.ScanStats  `json:"index"`
-		Links     []string              `json:"links"`
-		Events    []string              `json:"events"`
-	}{Version, a.cfg.Mode, a.cfg.Folder, a.cfg.Invite, a.cfg.Enabled, a.cfg.Paused, startup, status.State, status.Error, status.LastSync.Format("2006-01-02 15:04:05"), status.Result, status.Index, status.Links, status.Events}
+		Session   string                    `json:"session"`
+		Name      string                    `json:"name"`
+		Members   []syncengine.MemberStatus `json:"members"`
+		Legacy    bool                      `json:"legacy"`
+		Version   string                    `json:"version"`
+		Mode      string                    `json:"mode"`
+		Folder    string                    `json:"folder"`
+		Invite    string                    `json:"invite"`
+		Enabled   bool                      `json:"enabled"`
+		Paused    bool                      `json:"paused"`
+		Autostart bool                      `json:"autostart"`
+		State     string                    `json:"state"`
+		Error     string                    `json:"error"`
+		LastSync  string                    `json:"lastSync"`
+		Result    syncengine.SyncResult     `json:"result"`
+		Index     syncengine.ScanStats      `json:"index"`
+		Links     []string                  `json:"links"`
+		Events    []string                  `json:"events"`
+	}{Session: a.cfg.Session, Name: a.cfg.Name, Members: status.Members, Legacy: a.cfg.Mode == "host" || a.cfg.Mode == "join", Version: Version, Mode: a.cfg.Mode, Folder: a.cfg.Folder, Invite: "", Enabled: a.cfg.Enabled, Paused: a.cfg.Paused, Autostart: startup, State: status.State, Error: status.Error, LastSync: status.LastSync.Format("2006-01-02 15:04:05"), Result: status.Result, Index: status.Index, Links: status.Links, Events: status.Events}
 }
 
 func (a *application) isPaused() bool {
@@ -66,7 +70,7 @@ func (a *application) uiHandler() http.Handler {
 		a.mu.RLock()
 		cfg := a.cfg
 		a.mu.RUnlock()
-		if cfg.Folder == "" || cfg.Mode == "off" || !cfg.Enabled {
+		if cfg.Folder == "" || cfg.Mode != "session" || !cfg.Enabled {
 			http.Error(w, "configure a sync folder first", http.StatusConflict)
 			return
 		}

@@ -39,18 +39,28 @@ version display does not require a network request or separate service.
 
 - `New(home, notify)` creates an idle engine. Notifications use callbacks rather
   than imports of application or Windows tray code.
-- `Start(Options)` / `Stop()` own contexts, peer serving, scanners and watchers.
-  `Options` describes a session, not the application's persisted configuration.
-  Pausing/stopping cancels active synchronization as before.
-- `Snapshot()` returns detached status/history and pairing links, not live
-  scanner/server pointers or locks.
+- `PrepareSession(folder, invite)` creates a fresh session or rejoins that same
+  v4 session's valid saved history; old pairwise baselines are never imported.
+- `Start(Options)` / `Stop()` own equal-peer serving, reconciliation, scanners,
+  watchers and per-member long polls. Stop cancels and joins work and request
+  handlers before state can be reopened. Every member serves and receives.
+- `Snapshot()` returns detached status/history, invitation links and member state,
+  without acquiring the long-running reconciliation/scan lock.
 - `RequestSync()` and `ApproveBulkDelete()` express operations rather than
   transport internals. `ReportError()` and `RecordEvent()` retain status/history.
-- `ValidateInvite()` and `ExplainIgnore()` support validation/inspection without
-  exporting concrete peer, host, scanner or manifest implementations.
-- Reconciliation loads the persisted baseline before transfers. Unreadable state
-  reports an error and is not rewritten as an empty baseline. Successful state
-  is persisted before reporting a completed cycle.
+- `ValidateInvite()`, `RefreshMemberInvite()` and device-local `ExplainIgnore()`
+  support setup/inspection without exporting transport or scanner implementations.
+- `session_state.go` owns causal versions, clocks and validated durable history;
+  `session_sync.go` owns observe/merge/materialize and crash intents;
+  `session_network.go` owns v4 authentication, membership and serving;
+  `session_changes.go` / `session_transfers.go` own notifications and guarded
+  batching/move integration. See [session design](PEER-SESSIONS.md).
+- Session state is required before transfers; missing/damaged active history fails
+  closed rather than being reset. Tombstones survive offline members. Write intents
+  are persisted before filesystem mutations and completion before acknowledgement.
+- Existing lower-level transfer/scanner/fileops primitives and their pairwise test
+  fixtures remain reusable; there is no active legacy host/guest runtime or v1-v3
+  route on the v4 listener. Source files are served live, not mirrored privately.
 
 The engine has no software-installation admission gate, handoff callback,
 candidate-health option, or dependency on a release mechanism.
@@ -86,5 +96,6 @@ version display and absent software-update routes. Engine tests cover real
 transfers/reconciliation, watchers, retained baseline safety and the public API.
 Native filesystem locking/path tests stay with `fileops`.
 
-See [current validation](../review/UPDATER-REMOVAL.md). Older updater/refactor
-reports are historical evidence only, not current release instructions.
+See [current session validation](../review/PEER-SESSIONS.md). Older updater,
+path-fix and refactor reports remain historical evidence, not current operating
+instructions. The running installed app is not changed by source validation.

@@ -52,7 +52,7 @@ func TestIgnoreMatcherSemantics(t *testing.T) {
 
 func TestScanHonorsNestedRulesAndPrunesDirectories(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, root, ".folderbridgeignore", ".env\n")
+	writeTestFile(t, root, ".fbignore", ".env\n")
 	writeTestFile(t, root, ".gitignore", "build/\n*.log\n")
 	writeTestFile(t, root, "build/object.bin", "excluded")
 	writeTestFile(t, root, ".git/config", "never include")
@@ -65,7 +65,7 @@ func TestScanHonorsNestedRulesAndPrunesDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, included := range []string{"sub/code.go", "sub/keep.log", ".gitignore", ".folderbridgeignore", "sub/.gitignore"} {
+	for _, included := range []string{"sub/code.go", "sub/keep.log", ".gitignore", ".fbignore", "sub/.gitignore"} {
 		if _, ok := snapshot.Files[included]; !ok {
 			t.Errorf("missing %s", included)
 		}
@@ -152,7 +152,7 @@ func TestIgnoredPathsNeverDeleteSyncedFiles(t *testing.T) {
 	if err != nil || res.Downloaded != 1 {
 		t.Fatal(res, err)
 	}
-	writeTestFile(t, clientDir, ".folderbridgeignore", "data/private.txt\n")
+	writeTestFile(t, clientDir, ".fbignore", "data/private.txt\n")
 	base, _, err = syncFolders(context.Background(), clientDir, peer, base, scanner, false, func(string) {})
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +167,7 @@ func TestIgnoredPathsNeverDeleteSyncedFiles(t *testing.T) {
 		t.Fatal(got)
 	}
 	// Both have copies after removing ignore. Neither should be deleted.
-	if err := os.Remove(filepath.Join(clientDir, ".folderbridgeignore")); err != nil {
+	if err := os.Remove(filepath.Join(clientDir, ".fbignore")); err != nil {
 		t.Fatal(err)
 	}
 	base, _, err = syncFolders(context.Background(), clientDir, peer, base, scanner, false, func(string) {})

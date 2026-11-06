@@ -1,199 +1,231 @@
 package syncengine
 
 import (
-	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
-	"folderbridge/internal/fileops"
-	"net"
-	"net/http"
-	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
 
-// Start initializes a host/join session. Call Stop before changing an active
-// session. Paused/disabled options establish status without opening a peer port.
+// Start resumes an explicitly prepared v4 session. Legacy roles never open a
+// listener or migrate their pairwise baseline implicitly.
 func (a *Engine) Start(cfg Options) error {
 	a.controlMu.Lock()
 	defer a.controlMu.Unlock()
 	a.mu.Lock()
+	if a.session != nil {
+		a.mu.Unlock()
+		return errors.New("stop the active session before starting another")
+	}
 	a.cfg = cfg
 	a.lastError = ""
-	a.mu.Unlock()
-	if !cfg.Enabled || cfg.Mode == "off" || cfg.Paused {
-		a.mu.Lock()
+	if !cfg.Enabled || cfg.Mode == "off" || cfg.Mode == "" || cfg.Paused {
+		a.state = "Stopped"
 		if cfg.Paused && cfg.Enabled && cfg.Mode != "off" {
 			a.state = "Paused"
-		} else {
-			a.state = "Stopped"
 		}
 		a.mu.Unlock()
 		return nil
 	}
-	if err := fileops.CheckSyncRoot(cfg.Folder); err != nil {
-		return fmt.Errorf("unsafe sync folder: %w", err)
-	}
-	if cleaned, err := cleanupStaleParts(cfg.Folder, time.Now()); err != nil {
-		a.addEvent("Partial-file cleanup skipped: " + err.Error())
-	} else if cleaned > 0 {
-		a.addEvent(fmt.Sprintf("Recovered from interrupted transfers: removed %d stale temporary files", cleaned))
-	}
-	if cfg.Mode == "host" {
-		cert, pin, err := newTLSCert(filepath.Join(a.home, "peer-cert.pem"), filepath.Join(a.home, "peer-key.pem"))
-		if err != nil {
-			return err
-		}
-		ln, err := net.Listen("tcp", ":"+peerPort)
-		if err != nil {
-			return fmt.Errorf("cannot listen on port %s: %w", peerPort, err)
-		}
-		host := newHost(cfg.Folder, cfg.Secret)
-		host.scanner = newPersistentScanner(cfg.Folder, a.home)
-		watchCtx, watchCancel := context.WithCancel(context.Background())
-		a.mu.Lock()
-		a.cancel = watchCancel
+	if cfg.Mode != "session" {
+		a.state = "Fresh pairing required"
 		a.mu.Unlock()
-		go a.localChangeMonitor(watchCtx, cfg.Folder, host.scanner, host.signalChange)
-		host.onEvent = a.addEvent
-		host.onConnected = func() {
-			a.mu.Lock()
-			if a.state == "Hosting folder — waiting for peer" {
-				a.state = "Hosting folder — peer connected"
-			}
-			a.mu.Unlock()
-			a.addEvent("Paired computer connected")
-		}
-		server := &http.Server{Handler: host.handler(), ReadHeaderTimeout: 10 * time.Second}
-		a.mu.Lock()
-		a.fingerprint = pin
-		a.hostScanner = host.scanner
-		a.hostServer = server
-		a.state = "Hosting folder — waiting for peer"
-		a.mu.Unlock()
-		go func() {
-			err := server.Serve(tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}))
-			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				a.ReportError("Host server: " + err.Error())
-			}
-		}()
-		return nil
+		return errors.New("old host/guest settings are preserved; create or join a new sharing session")
 	}
-	info, err := parseInvite(cfg.Invite)
+	a.mu.Unlock()
+	address := cfg.ListenAddress
+	if address == "" {
+		address = ":" + peerPort
+	}
+	s, err := newSessionRuntime(a.home, cfg, address, a.RequestSync)
 	if err != nil {
 		return err
 	}
-	p := newPeer(info)
-	ctx, cancel := context.WithCancel(context.Background())
+	if cleaned, e := cleanupStaleParts(cfg.Folder, time.Now()); e != nil {
+		a.addEvent("Partial-file cleanup skipped: " + e.Error())
+	} else if cleaned > 0 {
+		a.addEvent(fmt.Sprintf("Removed %d stale partial files", cleaned))
+	}
 	a.mu.Lock()
-	a.cancel = cancel
-	a.state = "Connecting to peer"
+	a.session = s
+	a.hostScanner = s.scanner
+	a.state = "Connecting to session members"
 	a.mu.Unlock()
-	scanner := newPersistentScanner(cfg.Folder, a.home)
-	go a.clientLoopWithScanner(ctx, cfg, p, scanner)
+	s.workers.Add(1)
+	go func() {
+		defer s.workers.Done()
+		a.localChangeMonitor(s.ctx, cfg.Folder, s.scanner, func() { s.changes.signalChange(); a.RequestSync() })
+	}()
+	go a.sessionLoop(s)
 	return nil
 }
 
-// Stop cancels synchronization and closes the owned host listener.
+// Stop waits for the old reconciliation loop before another session may start.
+// Canceled transfers cannot publish a new baseline into a replacement session.
 func (a *Engine) Stop() {
 	a.controlMu.Lock()
 	defer a.controlMu.Unlock()
 	a.mu.Lock()
-	cancel, server := a.cancel, a.hostServer
-	a.cancel, a.hostServer = nil, nil
-	a.fingerprint = ""
+	s := a.session
+	a.session = nil
 	a.hostScanner = nil
 	a.state = "Stopped"
 	a.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if s != nil {
+		s.gate.Lock()
+		s.closing = true
+		s.gate.Unlock()
+		s.cancel()
+		_ = s.server.Close()
+		<-s.done
+		s.workers.Wait()
+		s.handlers.Wait()
 	}
-	if server != nil {
-		ctx, done := context.WithTimeout(context.Background(), 2*time.Second)
-		server.Shutdown(ctx)
-		done()
-		server.Close()
-	}
+	a.mu.Lock()
+	a.state = "Stopped"
+	a.mu.Unlock()
 }
 
-// RequestSync coalesces a manual request with filesystem/remote notifications.
 func (a *Engine) RequestSync() {
 	select {
 	case a.syncSignal <- struct{}{}:
 	default:
 	}
 }
+
 func (a *Engine) addEvent(msg string) {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.events = append([]string{time.Now().Format("15:04:05") + "  " + msg}, a.events...)
 	if len(a.events) > 20 {
 		a.events = a.events[:20]
 	}
-	a.mu.Unlock()
 }
-func (a *Engine) clientLoopWithScanner(ctx context.Context, cfg Options, p *peer, scanner *scanner) {
-	defer p.Close()
-	go a.localChangeMonitor(ctx, cfg.Folder, scanner, a.RequestSync)
-	go a.remoteChangeMonitor(ctx, p)
-	a.runSync(ctx, cfg, p, scanner)
+
+func (a *Engine) sessionLoop(s *sessionRuntime) {
+	defer close(s.done)
+	// Per-member long polls and native local events trigger reconciliation. A
+	// full safety scan remains independent of notifications.
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
+	a.runSessionCycle(s)
+	s.ensureMonitors()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
 		case <-a.syncSignal:
-			if !debounceChanges(ctx, a.syncSignal, 350*time.Millisecond, 2*time.Second) {
+			if !debounceChanges(s.ctx, a.syncSignal, 350*time.Millisecond, 2*time.Second) {
 				return
 			}
 		}
-		a.runSync(ctx, cfg, p, scanner)
+		a.runSessionCycle(s)
+		s.ensureMonitors()
 	}
 }
-func (a *Engine) runSync(ctx context.Context, cfg Options, p *peer, scanner *scanner) {
-	a.syncMu.Lock()
-	defer a.syncMu.Unlock()
-	if ctx.Err() != nil {
+
+func (a *Engine) runSessionCycle(s *sessionRuntime) {
+	if s.ctx.Err() != nil {
 		return
 	}
 	a.mu.Lock()
-	a.state = "Synchronizing"
-	a.mu.Unlock()
-	filename := baselineFilename(a.home, cfg.Folder, cfg.Invite)
-	base, err := loadBaseline(filename)
-	if err != nil {
-		a.ReportError("Baseline: " + err.Error())
-		return
-	}
-	a.mu.Lock()
-	allowMassDelete := a.allowMassDelete
+	allow := a.allowMassDelete
 	a.allowMassDelete = false
+	a.state = "Synchronizing session"
 	a.mu.Unlock()
-	next, result, syncErr := syncFolders(ctx, cfg.Folder, p, base, scanner, allowMassDelete, a.addEvent)
-	if ctx.Err() != nil {
+	s.mu.Lock()
+	wire, err := s.snapshot(allow)
+	s.mu.Unlock()
+	if err != nil {
+		if s.ctx.Err() == nil {
+			a.ReportError(err.Error())
+		}
 		return
 	}
-	if err := saveBaseline(filename, next); err != nil {
-		a.ReportError("Save baseline: " + err.Error())
+	ids := make([]string, 0, len(wire.Members))
+	for id := range wire.Members {
+		if id != s.self.ID {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	result := SyncResult{}
+	var problems []error
+	offline := 0
+	for _, id := range ids {
+		if s.ctx.Err() != nil {
+			return
+		}
+		s.mu.Lock()
+		next := s.nextTry[id]
+		previousMemberError := s.memberStatus[id].Error
+		s.mu.Unlock()
+		if !allow && time.Now().Before(next) {
+			if strings.Contains(previousMemberError, "Safety stop:") {
+				problems = append(problems, errors.New(previousMemberError))
+			}
+			offline++
+			continue
+		}
+		m := wire.Members[id]
+		r, e := s.exchange(s.ctx, m, sessionHello{Self: s.self, Members: wire.Members}, allow, a.addEvent)
+		result.Downloaded += r.Downloaded
+		result.Uploaded += r.Uploaded
+		result.Deleted += r.Deleted
+		result.Conflicts += r.Conflicts
+		result.Examined += r.Examined
+		result.Renames += r.Renames
+		result.BatchDownloads += r.BatchDownloads
+		s.mu.Lock()
+		st := MemberStatus{ID: id, Name: m.Name, State: "Connected", LastSeen: time.Now()}
+		if e != nil {
+			st = s.memberStatus[id]
+			st.ID = id
+			st.Name = m.Name
+			st.Error = e.Error()
+			st.State = "Pending / unavailable"
+			s.nextTry[id] = time.Now().Add(10 * time.Second)
+			offline++
+			// Connectivity is shown per member. A safety/integrity/application failure
+			// must also reach the global error and approval controls.
+			var hs *httpStatusError
+			if !transientTransferError(e) && (!errors.As(e, &hs) || hs.Status != 404) {
+				problems = append(problems, e)
+			}
+		} else {
+			delete(s.nextTry, id)
+		}
+		s.memberStatus[id] = st
+		s.publishMembers()
+		s.mu.Unlock()
+	}
+	if s.ctx.Err() != nil {
 		return
 	}
+	err = errors.Join(problems...)
+	stats := s.scanner.Stats()
 	a.mu.Lock()
-	a.lastResult = result
-	a.lastStats = scanner.Stats()
 	a.lastSync = time.Now()
-	previousError := a.lastError
-	if syncErr != nil {
-		a.lastError = syncErr.Error()
+	a.lastResult = result
+	a.lastStats = stats
+	previous := a.lastError
+	a.lastError = ""
+	a.state = "Up to date with reachable members"
+	if len(ids) == 0 {
+		a.state = "Session ready — invite another computer"
+	} else if offline > 0 {
+		a.state = fmt.Sprintf("Waiting for %d member(s); reachable members reconciled", offline)
+	}
+	if err != nil {
+		a.lastError = err.Error()
 		a.state = "Partial sync — will retry"
-	} else {
-		a.lastError = ""
-		a.state = "Up to date"
 	}
 	a.mu.Unlock()
-	if syncErr != nil && syncErr.Error() != previousError {
-		a.notify("FolderBridge sync issue", syncErr.Error(), true)
+	if err != nil && err.Error() != previous {
+		a.notify("FolderBridge sync issue", err.Error(), true)
 	} else if result.Conflicts > 0 {
-		a.notify("FolderBridge conflict", fmt.Sprintf("Saved %d conflict copy/copies. Review your synced folder.", result.Conflicts), true)
+		a.notify("FolderBridge conflict", fmt.Sprintf("Preserved %d conflict copy/copies", result.Conflicts), true)
 	}
 }

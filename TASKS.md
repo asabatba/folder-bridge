@@ -1,20 +1,23 @@
 # Project validation
 
 ## In progress
-- None. User-approved updater removal and local verification are complete; push/tag handling and hosted/manual acceptance await user direction; the user authorized a local commit.
+- Publish v4.0.0: user explicitly authorized commit, push and public stable publication after GitHub Windows checks pass, accepting the remaining manual-testing gaps. Preparing source commit/tag, then monitoring the release workflow and verifying the single-EXE asset before publication. Running app and pre-existing untracked `AGENTS.md` remain untouched.
 
 ## Blocked
-- Hosted release verification: updater removal/simplified draft workflow have not run on Actions. Existing `v3.3.0` selects old updater commit `f6009cc`; a user-directed push/new tag is needed, not an old-tag rerun. The path fix is already committed in `05a3b3d`. Signing-key/protected-signing-environment gates are obsolete after updater removal; no custom signing setup is needed.
-- Full native Windows suite: `TestPauseResumeHostLifecycle` conflicts with the running app's TCP 48713. The app remains untouched. All other 70 current tests pass (21 app, 7 fileops, 42 syncengine), including race detection on Go 1.23.12 with genuine short-name TMP. All 61 Linux tests execute under WSL, including that lifecycle test. See `review/UPDATER-REMOVAL.md`.
-- Windows 10/11 real manual upgrade/restore, interactive tray/login/notification, two-physical-computer LAN and physical power-cut acceptance remain unverified. Automated helper rollback/signing acceptance no longer applies.
+- Hosted v4.0.0 verification/publication awaits the new source commit/tag and successful Windows release workflow. Existing v3 tags/draft will not be changed. No signing setup is needed.
+- Remaining acceptance gaps: Windows 10/11 real manual v3→v4 upgrade/restore, interactive tray/login/notification, three-physical-computer LAN/firewall/DHCP and physical power-cut checks remain unverified. User explicitly accepts these gaps for v4.0.0 public publication after hosted checks; they must not be described as completed. See `review/PEER-SESSIONS.md`.
 
 ## Next
-- Await user-directed push and an unused release-tag choice; verify the new hosted Windows job and single-EXE draft, then complete manual acceptance before manual publication. See `docs/RELEASING.md`, `docs/UPDATING.md` and `review/UPDATER-REMOVAL.md`. Do not stop/replace the running app, tag, push or publish without authorization.
+- Complete the authorized v4.0.0 commit/push/tag, verify successful hosted Windows checks and the source-bound single-EXE draft, then publish stable with explicit fresh-pairing/ignore-rename instructions and known manual-testing gaps.
+- Physical-LAN/interactive acceptance remains follow-up work, not an implicit installation request. Do not stop/replace the running app; all members need v4/fresh pairing and manual `.folderbridgeignore` → `.fbignore` rename before setup.
 
 ## Backlog
-- Proposed: make the lifecycle test independent of the fixed production port.
+- Deferred by user: multiple independent sessions and automatic LAN discovery. Current scope remains one invite-only, LAN-only session.
 
 ## Done
+- Implemented approved equal-peer v4 LAN sessions: any member invites/serves/receives; creator-offline operation, durable causal edit/deletion history, deterministic conflict preservation, device-local `.fbignore`/`.gitignore` (no old-name alias), live-file serving without a private content mirror, compressed batches/no-payload moves and per-member notifications/status. Added fresh-pairing/legacy-settings preservation, stop/resume/leave/rejoin and stale-address refresh. Design: `docs/PEER-SESSIONS.md`.
+- Final session verification: all **97 native Windows tests and race tests pass** on Go 1.23.12 with genuine short-name TMP and **no port exclusion**; all **87 Linux tests execute under WSL**. Windows/Linux vet/root builds, GUI help, desktop/390px Edge fixture and whitespace/formatting checks pass. The automatic three-engine lifecycle also passes 12 repeated race runs after fixing its recipient-readiness assumption. Regression reproduced/fixed unavailable conflict-copy payload preservation. Evidence/limits: `review/PEER-SESSIONS.md`.
+- Replaced the old production-port lifecycle test with isolated ephemeral session listeners, resolving the previous Windows-suite blocker without touching the running app. Development build: `dist/peer-session/FolderBridge.exe` (4.0.0-dev, 7,288,320 bytes). No commit, push, tag, publication or installed-app change.
 - Removed self-updating end to end and implemented approved release option A: stable tag → Windows tests/vet/build → one EXE in a draft, manually published. Deleted updater module/commands/settings/UI/tray/recovery/health/signing and updater-only engine admission/handoff machinery; retained modular layout, ordinary sync persistence/cancellation and filesystem-identity safety. Added regressions for version/status, removed routes/UI/source and six-field configuration; unreadable-baseline safety remains covered.
 - Removal verification: 70 native Windows tests and race pass on Go 1.23.12 with short-name TMP and known port exclusion; all 61 Linux tests execute under WSL. Windows/Linux build/vet, GUI help, Edge desktop/narrow fixture and YAML/three-PowerShell-step parsing pass. Development single EXE: `dist/manual/FolderBridge.exe`, 7,232,512 bytes; hash/evidence/limits in `review/UPDATER-REMOVAL.md`. Local commit authorized by the user; no push/tag/publication or running-app change.
 

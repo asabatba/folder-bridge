@@ -302,12 +302,12 @@ func (t *windowsTray) showMenu() {
 		pausedLabel = "Resume synchronization"
 	}
 	pauseFlags := uintptr(0)
-	if !cfg.Enabled || cfg.Mode == "off" {
+	if !cfg.Enabled || cfg.Mode != "session" {
 		pauseFlags = mfGray
 	}
 	appendItem(pauseFlags, menuPause, pausedLabel)
 	syncFlags := uintptr(0)
-	if cfg.Paused || !cfg.Enabled || cfg.Mode != "join" {
+	if cfg.Paused || !cfg.Enabled || cfg.Mode != "session" {
 		syncFlags = mfGray
 	}
 	appendItem(syncFlags, menuSync, "Sync now")

@@ -20,7 +20,7 @@ func TestPausePreservesSettingsAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := config{Mode: "host", Folder: folder, Enabled: true, Secret: "pairing-secret"}
+	original := config{Mode: "session", Folder: folder, Enabled: true, Secret: "pairing-secret", Session: strings.Repeat("a", 32)}
 	a.cfg = original
 	if err := a.setPaused(true); err != nil {
 		t.Fatal(err)
@@ -100,31 +100,35 @@ func TestNotificationsOnlyOnNewError(t *testing.T) {
 	}
 }
 
-func TestPauseResumeHostLifecycle(t *testing.T) {
-	home := t.TempDir()
-	folder := t.TempDir()
-	a, err := newApp(home)
+func TestPauseResumeSessionLifecycle(t *testing.T) {
+	a, err := newApp(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.cfg = config{Mode: "host", Folder: folder, Enabled: true, Paused: true, Secret: "local-pairing-secret"}
+	a.listenAddress = "127.0.0.1:0"
+	folder := t.TempDir()
+	c, err := a.engine.PrepareSession(folder, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.cfg = config{Mode: "session", Folder: folder, Session: c.ID, Secret: c.Secret, Enabled: true, Paused: true}
 	if err := a.startPeer(); err != nil {
 		t.Fatal(err)
 	}
 	if a.engine.Snapshot().State != "Paused" {
-		t.Fatal("paused host should not listen")
+		t.Fatal("paused session should not listen")
 	}
 	if err := a.setPaused(false); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(a.engine.Snapshot().State, "Hosting folder") || a.cfg.Paused {
-		t.Fatal("resume should start host")
-	}
 	defer a.stopPeer()
+	if a.cfg.Paused || len(a.engine.Snapshot().Links) != 1 {
+		t.Fatal("resume should start equal-peer listener")
+	}
 	if err := a.setPaused(true); err != nil {
 		t.Fatal(err)
 	}
 	if !a.cfg.Paused || a.engine.Snapshot().State != "Paused" {
-		t.Fatalf("pause should stop host; state=%q", a.engine.Snapshot().State)
+		t.Fatal("pause should stop session")
 	}
 }

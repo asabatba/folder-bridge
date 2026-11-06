@@ -379,10 +379,12 @@ func (e *httpStatusError) Error() string {
 }
 
 type peer struct {
-	baseURL string
-	token   string
-	client  *http.Client
-	tuner   transferTuner
+	baseURL          string
+	token            string
+	client           *http.Client
+	tuner            transferTuner
+	headers          map[string]string
+	batchGetEndpoint string
 }
 
 func newPeer(invite invitation) *peer {
@@ -418,6 +420,9 @@ func (p *peer) request(ctx context.Context, method, endpoint string, body io.Rea
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+p.token)
+	for k, v := range p.headers {
+		req.Header.Set(k, v)
+	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

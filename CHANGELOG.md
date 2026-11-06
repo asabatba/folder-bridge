@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.0.0 — Equal-peer LAN sessions
+
+- Replace permanent host/guest setup with Create session / Join session. Every member serves and receives, any member can invite, and reachable members can continue without the creator. One LAN-only session per installation now; multiple sessions and discovery remain deferred.
+- Introduce authenticated v4 membership/roster exchange, pinned certificate-bound device identities, per-member long polls and durable address incarnations. Current same-session invitations can refresh stale LAN addresses without resetting history.
+- Replace pairwise baseline inference with per-path causal versions and retained deletion tombstones. Preserve concurrent contents under deterministic conflict names; avoid stale-member deletion resurrection and repeated conflict-copy storms.
+- Keep guarded verified replacement, crash-intent recovery, bulk-deletion approval, compressed small-file batches and unambiguous no-payload renames. Serve live shared files, not a second private content store.
+- Make ignores device-local and rename the custom rule file to `.fbignore` only, alongside `.gitignore`. No `.folderbridgeignore` alias; fresh setup blocks obsolete rule filenames until manually renamed.
+- Require fresh v3 pairing with explicit safe merging. Preserve legacy configuration/history rather than importing deletion state; no mixed-version wire compatibility or legacy app role remains active.
+- Add member/pending status, equal-peer invitations, stop/resume/leave controls and responsive detached dashboard snapshots. Tray Sync now works for every member.
+- Add real multi-peer TLS, creator-offline, stale-return, conflict/missing-payload, restart, ignore, batch/move and authentication regressions. Use ephemeral listeners so lifecycle tests do not conflict with the running app. See [session validation](review/PEER-SESSIONS.md).
+
 ## v3.3 — Modular app and manual releases (unreleased)
 
 - Keep a thin root launcher, `internal/app` for settings/dashboard/tray orchestration, `internal/syncengine` for synchronization lifecycle/baselines, and `internal/fileops` for shared guarded filesystem operations. Embed `internal/app/web/dashboard.html`; preserve `go build .` and dependency direction.

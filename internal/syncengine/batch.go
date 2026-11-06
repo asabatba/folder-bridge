@@ -248,7 +248,11 @@ func (p *peer) getBatch(ctx context.Context, root string, files []batchFile) ([]
 	if err != nil {
 		return nil, err
 	}
-	resp, err := p.request(ctx, "POST", "/v2/batch/get", strings.NewReader(string(body)), map[string]string{"Content-Type": "application/json"})
+	endpoint := p.batchGetEndpoint
+	if endpoint == "" {
+		endpoint = "/v2/batch/get"
+	}
+	resp, err := p.request(ctx, "POST", endpoint, strings.NewReader(string(body)), map[string]string{"Content-Type": "application/json"})
 	if err != nil {
 		return nil, err
 	}
@@ -270,6 +274,11 @@ func (p *peer) getBatch(ctx context.Context, root string, files []batchFile) ([]
 		}
 		if hdr.Name != item.Path || hdr.Size != item.Info.Size || (hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA) {
 			return successes, errors.New("unexpected TAR file or size")
+		}
+		if ignored, err := localIgnoreForPath(root, item.Path); err != nil {
+			return successes, err
+		} else if ignored {
+			return successes, errors.New("destination became ignored during batch")
 		}
 		dest, err := fileops.CheckedPath(root, item.Path)
 		if err != nil {
