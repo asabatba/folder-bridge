@@ -39,7 +39,6 @@ To suspend synchronization while preserving all pairing settings, use **Pause sy
 - Windows Defender Firewall or corporate endpoint protection might block incoming connections or this unsigned executable. Only permit network access if your network administrator and device policy authorize it. This application does not disable or work around any firewall or endpoint protections.
 - If more than one IP address is shown, use the one reachable from the other PC. Pairing links are passwords: keep them private.
 
-
 ### New in v3.3
 
 - Check the fixed public `asabatba/folder-bridge` GitHub release source at startup and every 24 hours. Stable releases only; downloads stream in the background with bounded sizes and retries. No updater activity pauses ordinary synchronization before approval.

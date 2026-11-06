@@ -50,9 +50,26 @@ func validateFolder(raw, home string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("check private settings directory: %w", err)
 	}
-	// Application secrets must never be accidentally synced.
-	if rel, err := filepath.Rel(folder, privateHome); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", errors.New("this folder includes FolderBridge private settings; select a narrower directory")
+	// Compare filesystem identities, not path spellings: Windows 8.3 names
+	// and extended-length prefixes can identify the same directory while Rel
+	// reports unrelated paths. An absent folder cannot contain the existing home.
+	folderInfo, err := os.Stat(folder)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("check selected folder: %w", err)
+	}
+	if err == nil {
+		for ancestor := privateHome; ; ancestor = filepath.Dir(ancestor) {
+			info, err := os.Stat(ancestor)
+			if err != nil {
+				return "", fmt.Errorf("check private settings ancestor: %w", err)
+			}
+			if os.SameFile(folderInfo, info) {
+				return "", errors.New("this folder includes FolderBridge private settings; select a narrower directory")
+			}
+			if filepath.Dir(ancestor) == ancestor {
+				break
+			}
+		}
 	}
 	if err := os.MkdirAll(folder, 0755); err != nil {
 		return "", err

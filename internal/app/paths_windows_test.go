@@ -6,7 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
+	"unsafe"
 )
 
 func createTestJunction(t *testing.T, link, target string) {
@@ -21,6 +24,65 @@ func createTestJunction(t *testing.T, link, target string) {
 		}
 	})
 }
+func shortPathForTest(t *testing.T, path string) string {
+	t.Helper()
+	input, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getShortPath := syscall.NewLazyDLL("kernel32.dll").NewProc("GetShortPathNameW")
+	size, _, callErr := getShortPath.Call(uintptr(unsafe.Pointer(input)), 0, 0)
+	if size == 0 {
+		t.Fatalf("GetShortPathNameW size: %v", callErr)
+	}
+	buffer := make([]uint16, size)
+	n, _, callErr := getShortPath.Call(uintptr(unsafe.Pointer(input)), uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
+	if n == 0 || n >= uintptr(len(buffer)) {
+		t.Fatalf("GetShortPathNameW: %v", callErr)
+	}
+	return syscall.UTF16ToString(buffer)
+}
+
+func TestRejectPrivateSettingsPathSpellings(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "long private parent directory")
+	home := filepath.Join(parent, "long private settings directory")
+	if err := os.MkdirAll(home, 0700); err != nil {
+		t.Fatal(err)
+	}
+	extended := func(path string) string {
+		if strings.HasPrefix(path, `\\`) {
+			return `\\?\UNC\` + strings.TrimPrefix(path, `\\`)
+		}
+		return `\\?\` + path
+	}
+	cases := []struct{ name, folder, settings string }{
+		{"extended selected home", extended(home), home},
+		{"extended settings home", home, extended(home)},
+		{"extended selected parent", extended(parent), home},
+		{"extended settings under parent", parent, extended(home)},
+	}
+	shortHome, shortParent := shortPathForTest(t, home), shortPathForTest(t, parent)
+	if !strings.EqualFold(shortHome, home) && !strings.EqualFold(shortParent, parent) {
+		cases = append(cases,
+			struct{ name, folder, settings string }{"short selected home", shortHome, home},
+			struct{ name, folder, settings string }{"short settings home", home, shortHome},
+			struct{ name, folder, settings string }{"short selected parent", shortParent, home},
+			struct{ name, folder, settings string }{"short settings under parent", parent, shortHome},
+		)
+	} else {
+		t.Log("8.3 aliases unavailable on this volume; extended-path cases still run")
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := validateFolder(tc.folder, tc.settings); err == nil {
+				t.Fatal("selected private settings directory through alternate path spelling")
+			} else if !strings.Contains(err.Error(), "private settings") {
+				t.Fatalf("unexpected rejection instead of private-settings guard: %v", err)
+			}
+		})
+	}
+}
+
 func TestRejectJunctionFolderPaths(t *testing.T) {
 	target := t.TempDir()
 	writeTestFile(t, target, "child/important.txt", "keep me")

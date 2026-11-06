@@ -15,7 +15,7 @@
 ## Unreleased — Path safety and dashboard hardening
 
 - Reject selected sync folders whose paths include symbolic links, Windows junctions or other reparse points; select the real directory instead. Recheck roots at startup, during scans and transfers, and before stale-file cleanup. Unsupported or missing roots fail rather than becoming empty manifests that could propagate deletions.
-- Resolve the private-settings location before checking containment, preventing junction aliases from bypassing the settings exclusion.
+- Resolve the private-settings location before checking containment, preventing junction aliases from bypassing the settings exclusion. Compare filesystem identities rather than path strings so Windows 8.3 names and extended prefixes cannot bypass that exclusion; verified with Go 1.23.12 and permanent native regression tests.
 - Require the exact dashboard authority `127.0.0.1:47831` on every request, including credential-bearing GET endpoints; retain POST origin/content-type checks.
 - Add permanent regression tests for junction replacements on both peers, settings aliases, symlink paths, invalid roots, ordinary paths and dashboard authority/origin validation. No protocol, configuration or baseline migration.
 
