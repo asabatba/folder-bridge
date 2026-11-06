@@ -1,6 +1,8 @@
 # Local build products and validation artifacts
 /dist/
 /FolderBridge.exe
+/*.exe
+*.private.pem
 /*.test
 /*.test.exe
 /coverage

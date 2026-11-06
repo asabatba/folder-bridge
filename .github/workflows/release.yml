@@ -1,0 +1,142 @@
+name: FolderBridge release (offline signing)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing draft release tag (for example v3.3.0)'
+        required: true
+        type: string
+      signature:
+        description: 'Base64 Ed25519 signature of draft manifest (offline)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: folderbridge-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Native Windows regression and updater integration tests
+        shell: pwsh
+        run: |
+          go test ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go vet ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build public-key-pinned executables and exact manifest
+        shell: pwsh
+        run: |
+          $key = [Convert]::FromBase64String($env:UPDATE_PUBLIC_KEY)
+          if ($key.Length -ne 32) {
+            throw 'Set UPDATE_PUBLIC_KEY to the offline public key.'
+          }
+          $part = '(0|[1-9][0-9]*)'
+          $stable = '^v' + $part + '\.' + $part + '\.' + $part + '$'
+          if ($env:RELEASE_TAG -notmatch $stable) {
+            throw 'Stable semantic version tag required.'
+          }
+          $version = $env:RELEASE_TAG.Substring(1)
+          New-Item -ItemType Directory -Force dist/release | Out-Null
+          $pin = $env:UPDATE_PUBLIC_KEY
+          $flags = '-s -w -H=windowsgui ' +
+            "-X folderbridge/internal/update.PublicKey=$pin " +
+            "-X folderbridge/internal/update.Version=$version"
+          go build -trimpath -ldflags $flags -o dist/release/FolderBridge.exe .
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go build -trimpath -ldflags $flags `
+            -o dist/release/FolderBridge-Updater.exe ./cmd/folderbridge-updater
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go run ./cmd/folderbridge-release --mode package `
+            --dir dist/release --version $version
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # actions/upload-artifact v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unsigned-release-${{ github.ref_name }}
+          path: dist/release/*
+          if-no-files-found: error
+      - name: Create unpublished draft for offline review and signing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create $env:RELEASE_TAG dist/release/* --draft `
+            --verify-tag --title "FolderBridge $env:RELEASE_TAG" `
+            --generate-notes
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  publish:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: write
+    env:
+      UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
+      UPDATE_SIGNATURE: ${{ inputs.signature }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Fetch exact draft assets (do not rebuild after signing)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $part = '(0|[1-9][0-9]*)'
+          $stable = '^v' + $part + '\.' + $part + '\.' + $part + '$'
+          if ($env:RELEASE_TAG -notmatch $stable) {
+            throw 'Stable semantic version tag required.'
+          }
+          $release = gh release view $env:RELEASE_TAG --json isDraft |
+            ConvertFrom-Json
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not $release.isDraft) {
+            throw 'Only unpublished drafts may be published.'
+          }
+          gh release download $env:RELEASE_TAG --dir dist/release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Verify offline signature and artifact integrity
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          go run ./cmd/folderbridge-release --mode verify `
+            --dir dist/release --version $version
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload verified signature and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release upload $env:RELEASE_TAG dist/release/manifest.sig `
+            --clobber
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          gh release edit $env:RELEASE_TAG --draft=false --latest
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

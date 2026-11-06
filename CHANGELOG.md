@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.3 — Self-updater (release gates pending)
+
+- Discover stable releases from the fixed public `asabatba/folder-bridge` GitHub repository at startup and every 24 hours; stream background downloads with bounded sizes/retries.
+- Verify exact Ed25519-signed manifest bytes, ZIP SHA-256, minimum updater version, Windows x64 PE headers, strict archive entries and HTTPS download/redirect origins. Builds without an embedded public key fail closed.
+- Add tray and dashboard update controls, explicit restart approval, skip-version settings, update status/history and explicit retry of quarantined failures. Automatic installation is not supported.
+- Drain real host writes and client sync cycles without cancellation, require baseline/config persistence, then hand off to a standalone Go helper. Preserve config, pairing, ignore files, history, pause state and protocol compatibility.
+- Add same-volume replacement, durable old-EXE backup and transaction journal, authenticated initialization health with a 30-second deadline, rollback and independently verified crash-recovery execution. Respect ACLs, sharing locks and device policy without elevation.
+- Add offline key/sign/package/verify tooling and a two-phase GitHub Actions workflow: unsigned draft build, then verification/publication of an externally signed manifest. The private key never enters CI.
+- Refactor configuration, app state, lifecycle and dashboard into focused files; embed `web/dashboard.html`; isolate updater logic in `internal/update` and executables in `cmd/`. Preserve `go build .` and the existing synchronization engine layout.
+- Add Windows-native executable/helper, health, rollback, interrupted transaction, ACL, junction and sharing-lock integration tests; general trust/download/archive tests; real transfer-drain and v3.2 configuration regressions. Update the dashboard test to check its dynamic version element rather than a hard-coded old version.
+- Production signing key/release activation, GitHub publication execution, Windows 10/interactive desktop and physical power-loss checks remain release gates. See [updater instructions](docs/UPDATING.md) and [validation evidence](review/V33-VALIDATION.md). An unmodified v3.2 app requires one manual bootstrap installation.
+
 ## Unreleased — Path safety and dashboard hardening
 
 - Reject selected sync folders whose paths include symbolic links, Windows junctions or other reparse points; select the real directory instead. Recheck roots at startup, during scans and transfers, and before stale-file cleanup. Unsupported or missing roots fail rather than becoming empty manifests that could propagate deletions.

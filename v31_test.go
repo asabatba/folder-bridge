@@ -65,7 +65,7 @@ func TestPauseAPIAndDashboard(t *testing.T) {
 	if response.Code != http.StatusConflict {
 		t.Errorf("expected 409 without configuration, got %d", response.Code)
 	}
-	for _, required := range []string{"v3.2", "id=\"pause\"", "id=\"autostart\"", "/api/pause", "/api/autostart"} {
+	for _, required := range []string{"id=\"currentversion\"", "id=\"pause\"", "id=\"autostart\"", "/api/pause", "/api/autostart"} {
 		if !strings.Contains(pageHTML, required) {
 			t.Errorf("dashboard missing %q", required)
 		}

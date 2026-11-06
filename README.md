@@ -1,9 +1,10 @@
-# FolderBridge v3.2
+# FolderBridge v3.3
 
 A portable, two-computer LAN folder synchronizer for Windows 10/11 (x64).
 
-- One executable per computer; no cloud service or account.
-- Native Go binary (~7 MB), no Python, .NET runtime, or additional software required.
+- Local synchronization needs no cloud service or account. Optional update checks contact GitHub; disable them in the dashboard if device policy requires it.
+- Native Go executables, no Python, .NET runtime, or additional software required. A separate small helper handles approved updates and recovery.
+- Signed Windows self-updates: background download, explicit restart approval, graceful sync drain, authenticated startup health and automatic rollback. **Production activation awaits an offline signing public key and signed published release; source builds without a key fail closed.** See [updater setup and release instructions](docs/UPDATING.md) and [v3.3 validation](review/V33-VALIDATION.md).
 - Includes a native Windows system-tray icon with pause/resume, open folder, open dashboard, sync now, launch-at-login toggle and quit. The browser-based control panel remains available.
 - Two-way sync, including files in nested folders and ordinary file deletions.
 - Detects unambiguous moves and renames of unchanged files, applying the move to the other PC without sending the file payload.
@@ -22,7 +23,7 @@ A portable, two-computer LAN folder synchronizer for Windows 10/11 (x64).
 
 ## Quick start
 
-1. Copy `FolderBridge.exe` to **both** Windows computers. Run it on both. The app opens the browser dashboard at `http://127.0.0.1:47831/` and stays in the Windows notification area. If the browser doesn't open, navigate there manually.
+1. Extract the Windows release ZIP (`FolderBridge.exe` and `FolderBridge-Updater.exe`) into a user-writable directory on **both** Windows computers. Run `FolderBridge.exe` on both. The app opens the browser dashboard at `http://127.0.0.1:47831/` and stays in the Windows notification area. If the browser doesn't open, navigate there manually.
 2. On the first PC choose **Host folder**, paste a dedicated directory path (for example `C:\Users\Alice\Documents\Shared`), and click **Save & start**.
 3. Copy one of the displayed pairing links. Use the LAN address that the second computer can reach (typically starts with `192.168.`, `10.`, or `172.`).
 4. On the second PC choose **Join another PC**, enter its own directory path, paste the pairing link, and click **Save & start**.
@@ -38,6 +39,17 @@ To suspend synchronization while preserving all pairing settings, use **Pause sy
 - Windows Defender Firewall or corporate endpoint protection might block incoming connections or this unsigned executable. Only permit network access if your network administrator and device policy authorize it. This application does not disable or work around any firewall or endpoint protections.
 - If more than one IP address is shown, use the one reachable from the other PC. Pairing links are passwords: keep them private.
 
+
+### New in v3.3
+
+- Check the fixed public `asabatba/folder-bridge` GitHub release source at startup and every 24 hours. Stable releases only; downloads stream in the background with bounded sizes and retries. No updater activity pauses ordinary synchronization before approval.
+- Ed25519 verification of exact manifest bytes, SHA-256 verification of the ZIP, exact archive-name/path and Windows x64 checks, and an HTTPS redirect allowlist. Unsigned, modified, older or incompatible releases are rejected.
+- Tray controls: **Check for updates**, **Update available: vX.Y.Z**, **Restart to update**, and **Skip this version**. The dashboard adds versions, download status, release notes, check/result history, settings and explicit retry of quarantined failures.
+- After approval, wait for host writes and the client cycle/baseline to finish, persist state, then hand off to the standalone helper. Same-volume replacement, a durable backup/journal, authenticated 30-second initialization health and rollback protect failed updates. No administrator elevation or device-policy bypass.
+- Configuration and LAN protocol remain compatible. An unmodified v3.2 installation needs **one manual bootstrap upgrade**; it cannot discover an updater it does not contain. Subsequent signed updates use the new flow.
+- Focused source refactor: separate app/config/lifecycle/dashboard files, embedded `web/dashboard.html`, shared `internal/update`, and standalone updater/release-tool commands. `go build .` remains supported.
+
+**Validation:** Windows 11-native helper/lock/ACL/junction/recovery tests, real transfer-drain tests, regression tests and race detection have been run. Linux regression/trust tests also pass under WSL. The occupied-port lifecycle exclusion, production key/release setup, unexecuted GitHub publication workflow and remaining Windows 10/interactive/power-cut checks are documented in [v3.3 validation](review/V33-VALIDATION.md). This is not a claim that all release gates are complete.
 
 ### New in v3.2
 
@@ -156,18 +168,19 @@ build/
 
 Per-user application data is stored in `%AppData%\FolderBridge\`:
 
-- `config.json`: role, folder, peer invite or host pairing secret, plus optional persisted pause state. Startup preference is stored in the Windows per-user Run registry key, not here.
+- `config.json`: role, folder, peer invite or host pairing secret, optional persisted pause state and backward-compatible `updates` settings. Startup preference is stored in the Windows per-user Run registry key, not here.
 - `peer-cert.pem`, `peer-key.pem`: TLS identity for hosting.
 - `baseline-*.json`: content hashes recorded at the last successful sync.
 - `index-*.json`: best-effort persistent SHA-256 hash cache keyed by local folder; deleting it only makes the next scan rehash files.
+- `update-state.json`, `update-result.json`, `updates/`: check/download status, installation results/quarantine and signed staging evidence. These are independent of pairing and synchronization state.
 
 Do not copy the configuration directory into the shared folder; the app refuses a selected folder that contains its own settings directory. Deleting a baseline starts a fresh **merge**, not a new round of deletions.
 
-### Updating from v3.1 or earlier
+### First upgrade from v3.2 or earlier
 
 1. In the FolderBridge browser dashboard, click **Quit app** on both PCs (do not just close the browser tab).
-2. Replace both copies of `FolderBridge.exe` with v3.2 and start them again.
-3. Confirm **v3.2** in the control panel and that the joining PC says **Up to date**. Your configuration and baselines under `%AppData%\FolderBridge` remain unchanged.
+2. Extract the first trusted v3.3 Windows release into each application directory and start `FolderBridge.exe` again. An old v3.2 executable cannot perform this bootstrap automatically.
+3. Confirm **v3.3.0** in the control panel and that the joining PC says **Up to date**. Your configuration and baselines under `%AppData%\FolderBridge` remain unchanged.
 
 ### Build from source
 
@@ -176,6 +189,7 @@ Requires Go 1.23 or newer. In the source directory:
 ```powershell
 go test ./...
 go build -trimpath -ldflags="-s -w -H=windowsgui" -o FolderBridge.exe .
+go build -trimpath -ldflags="-s -w -H=windowsgui" -o FolderBridge-Updater.exe ./cmd/folderbridge-updater
 ```
 
 On Linux/macOS, cross-compile for Windows x64:
@@ -184,6 +198,8 @@ On Linux/macOS, cross-compile for Windows x64:
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -H=windowsgui' -o FolderBridge.exe .
 ```
 
-To inspect tests and protocol implementation, see `v32_test.go`, `renames.go`, `move.go`, `watcher_windows_test.go`, `watcher_windows.go`, `changes.go`, `index.go`, `transfer.go`, `sync.go`, and `network.go`.
+These source builds deliberately have no update trust key and cannot self-update. For key-pinned production builds, offline signing, release workflows, recovery and the reorganized source layout, see [docs/UPDATING.md](docs/UPDATING.md).
+
+Updater tests are in `updates_test.go`, `internal/update/verify_test.go`, and `internal/update/install_windows_test.go`. To inspect tests and protocol implementation, see `v32_test.go`, `renames.go`, `move.go`, `watcher_windows_test.go`, `watcher_windows.go`, `changes.go`, `index.go`, `transfer.go`, `sync.go`, and `network.go`.
 
 **Acceptable use:** Only synchronize files and devices you are authorized to connect. A restriction on Syncthing or external file transfer may be intentional; if so, use an approved corporate transfer solution instead.

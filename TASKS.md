@@ -1,19 +1,25 @@
 # Project validation
 
 ## In progress
-- None; the three confirmed findings have been remediated and the executable rebuilt.
+- None; v3.3 implementation/refactor verification is complete. Production release activation and manual acceptance remain blocked below; the overall v3.3 definition of done is not yet met.
 
 ## Blocked
-- Full Windows suite: `TestPauseResumeHostLifecycle` cannot bind TCP 48713 because another FolderBridge instance is running. Existing process was not stopped. Other 58 Windows tests pass; the isolated lifecycle failure was reconfirmed after remediation.
-- Interactive Windows tray/login/notification checks and two-physical-computer LAN validation remain manual and unverified.
+- Production updater activation awaits an offline-generated Ed25519 public key, protected GitHub release environment, real Actions execution and signed published release. No production private key was created/stored; no tag, push or publication was performed.
+- Full Windows suite: `TestPauseResumeHostLifecycle` still cannot bind TCP 48713 because another FolderBridge instance is running. Existing process was not stopped. All other 76 current Windows tests pass (62 main-package, 14 updater); the isolated port failure was reconfirmed after v3.3 changes.
+- Complete real-app upgrade/rollback on Windows 10/11, interactive tray/login/notification and two-physical-computer LAN checks, and physical power-cut testing remain manual and unverified. Native Windows 11 helper/ACL/lock/recovery and real transfer-drain tests do pass; see `review/V33-VALIDATION.md`.
 
 ## Next
-- Await user-directed manual validation or follow-up work. No process shutdown is authorized.
+- Await user-supplied production public key and user-directed release activation/manual acceptance per `docs/UPDATING.md` and `review/V33-VALIDATION.md`. Do not stop the existing app, tag, push or publish without authorization.
 
 ## Backlog
 - Proposed: make the lifecycle test independent of the fixed production port.
 
 ## Done
+- Implemented v3.3 signed self-updater against fixed public `asabatba/folder-bridge`: bounded streamed staging, explicit installation approval, graceful sync drain/persistence, standalone helper, independently verified recovery, authenticated version-bound health, backup/rollback and per-attempt quarantine/retry. No new module dependency or sync protocol/history migration.
+- Completed the approved focused refactor: extracted `app.go`, `config.go`, `lifecycle.go`, `dashboard.go`; embed `web/dashboard.html`; isolate `internal/update`, `cmd/folderbridge-updater` and offline release tooling. `go build .` remains supported; engine modules stay in the root package.
+- Added offline key/package/sign/verify tooling and two-phase release workflow. Release actions are commit-pinned; Go caches/checkout credential persistence disabled; repository tokens limited to release-access steps. Local test-key packaging/signing/verification and YAML/all-six-PowerShell-step syntax checks pass; actual GitHub execution remains blocked above.
+- Final v3.3 checks: 76 Windows tests pass with one explicit occupied-port exclusion; Windows race detector passes with the same exclusion; all 67 Linux tests execute successfully under WSL (including the lifecycle test); Windows/Linux `go vet`, formatting and whitespace checks pass. Edge/Playwright fixture checks cover versions/results, approval/dismissal, disabled settings, offline verified readiness and desktop/narrow layouts without console errors. Evidence and limits: `review/V33-VALIDATION.md`.
+- Built `dist/v3.3/FolderBridge.exe` (9,082,368 bytes; SHA-256 `43414278880c7b3a91064df3cecdb6ae0b3fd0feb3fc0dbdbbe233e2d41b6abc`) and `FolderBridge-Updater.exe` (7,178,752 bytes; SHA-256 `50df65967861552cb6c297b588dda6bce46b7b857063718b34724ed42f6ffe90`). App help smoke test passes. These development binaries deliberately lack a production update key and fail closed; the running executable was not replaced.
 - Git housekeeping: initialized `main`; added ignore rules for builds, logs/coverage and local secrets, plus LF line-ending attributes. Moved stray root coverage output to `dist/coverage-initial.out` without deleting artifacts. Verified the staged source-only snapshot: no whitespace errors, all files mode `100644`, no common private-key/token pattern hits, and Windows/WSL Git compatibility. No remote configured or running process changed.
 - Remediated all three findings using the user-approved rejection policy for junction/symlink paths (including ancestors). Added startup/scan/transfer/cleanup checks and exact dashboard authority validation; no protocol/configuration migration or new dependency.
 - Added permanent regression tests in `paths_windows_test.go`, `paths_test.go` and `security_test.go`; updated existing dashboard tests to use the canonical authority. Targeted tests reproduced failures before fixes.
