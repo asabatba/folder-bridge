@@ -44,9 +44,6 @@ const (
 	menuSync          = 2004
 	menuAutostart     = 2005
 	menuQuit          = 2006
-	menuUpdateCheck   = 2007
-	menuUpdateInstall = 2008
-	menuUpdateSkip    = 2009
 )
 
 var (
@@ -320,22 +317,6 @@ func (t *windowsTray) showMenu() {
 	}
 	appendItem(0, menuAutostart, startupLabel)
 	appendItem(mfSeparator, 0, "")
-	updateStatus := t.app.updates.Status()
-	checkFlags := uintptr(0)
-	if !cfg.Updates.Enabled {
-		checkFlags = mfGray
-	}
-	appendItem(checkFlags, menuUpdateCheck, "Check for updates")
-	if updateStatus.AvailableVersion != "" {
-		appendItem(mfGray, 0, "Update available: v"+updateStatus.AvailableVersion)
-		installFlags := uintptr(mfGray)
-		if updateStatus.Ready && cfg.Updates.Enabled {
-			installFlags = 0
-		}
-		appendItem(installFlags, menuUpdateInstall, "Restart to update")
-		appendItem(0, menuUpdateSkip, "Skip this version")
-	}
-	appendItem(mfSeparator, 0, "")
 	appendItem(0, menuQuit, "Quit FolderBridge")
 	var p trayPoint
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&p)))
@@ -364,18 +345,6 @@ func (t *windowsTray) showMenu() {
 		go func() {
 			if err := setAutostart(!autostartEnabled()); err != nil {
 				t.app.notify("FolderBridge", err.Error(), true)
-			}
-		}()
-	case menuUpdateCheck:
-		t.app.checkUpdate(false, false)
-	case menuUpdateInstall:
-		if err := t.app.approveUpdate(); err != nil {
-			t.app.notify("FolderBridge update", err.Error(), true)
-		}
-	case menuUpdateSkip:
-		go func() {
-			if err := t.app.skipUpdate(); err != nil {
-				t.app.notify("FolderBridge update", err.Error(), true)
 			}
 		}()
 	case menuQuit:

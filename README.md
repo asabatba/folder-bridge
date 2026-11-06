@@ -2,9 +2,9 @@
 
 A portable, two-computer LAN folder synchronizer for Windows 10/11 (x64).
 
-- Local synchronization needs no cloud service or account. Optional update checks contact GitHub; disable them in the dashboard if device policy requires it.
-- Native Go executables, no Python, .NET runtime, or additional software required. A separate small helper handles approved updates and recovery.
-- Signed Windows self-updates: background download, explicit restart approval, graceful sync drain, authenticated startup health and automatic rollback. **Production activation awaits an offline signing public key and signed published release; source builds without a key fail closed.** See [updater setup and release instructions](docs/UPDATING.md) and [v3.3 validation](review/V33-VALIDATION.md).
+- Local synchronization needs no cloud service or account. The app does not check GitHub or download software in the background.
+- One native Go executable, no Python, .NET runtime, helper, or additional software required.
+- Manual upgrades only: download `FolderBridge.exe`, quit the app, replace the executable, and restart. See [upgrade instructions](docs/UPDATING.md) and the [simple release workflow](docs/RELEASING.md).
 - Includes a native Windows system-tray icon with pause/resume, open folder, open dashboard, sync now, launch-at-login toggle and quit. The browser-based control panel remains available.
 - Two-way sync, including files in nested folders and ordinary file deletions.
 - Detects unambiguous moves and renames of unchanged files, applying the move to the other PC without sending the file payload.
@@ -23,7 +23,7 @@ A portable, two-computer LAN folder synchronizer for Windows 10/11 (x64).
 
 ## Quick start
 
-1. Extract the Windows release ZIP (`FolderBridge.exe` and `FolderBridge-Updater.exe`) into a user-writable directory on **both** Windows computers. Run `FolderBridge.exe` on both. The app opens the browser dashboard at `http://127.0.0.1:47831/` and stays in the Windows notification area. If the browser doesn't open, navigate there manually.
+1. Download `FolderBridge.exe` from [GitHub Releases](https://github.com/asabatba/folder-bridge/releases) into a user-writable directory on **both** Windows computers. Run it on both. The app opens the browser dashboard at `http://127.0.0.1:47831/` and stays in the Windows notification area. If the browser doesn't open, navigate there manually.
 2. On the first PC choose **Host folder**, paste a dedicated directory path (for example `C:\Users\Alice\Documents\Shared`), and click **Save & start**.
 3. Copy one of the displayed pairing links. Use the LAN address that the second computer can reach (typically starts with `192.168.`, `10.`, or `172.`).
 4. On the second PC choose **Join another PC**, enter its own directory path, paste the pairing link, and click **Save & start**.
@@ -41,14 +41,12 @@ To suspend synchronization while preserving all pairing settings, use **Pause sy
 
 ### New in v3.3
 
-- Check the fixed public `asabatba/folder-bridge` GitHub release source at startup and every 24 hours. Stable releases only; downloads stream in the background with bounded sizes and retries. No updater activity pauses ordinary synchronization before approval.
-- Ed25519 verification of exact manifest bytes, SHA-256 verification of the ZIP, exact archive-name/path and Windows x64 checks, and an HTTPS redirect allowlist. Unsigned, modified, older or incompatible releases are rejected.
-- Tray controls: **Check for updates**, **Update available: vX.Y.Z**, **Restart to update**, and **Skip this version**. The dashboard adds versions, download status, release notes, check/result history, settings and explicit retry of quarantined failures.
-- After approval, wait for host writes and the client cycle/baseline to finish, persist state, then hand off to the standalone helper. Same-volume replacement, a durable backup/journal, authenticated 30-second initialization health and rollback protect failed updates. No administrator elevation or device-policy bypass.
-- Configuration and LAN protocol remain compatible. An unmodified v3.2 installation needs **one manual bootstrap upgrade**; it cannot discover an updater it does not contain. Subsequent signed updates use the new flow.
-- Modular source layout: a thin root `main.go`, application/UI orchestration in `internal/app`, synchronization in `internal/syncengine`, shared filesystem safety in `internal/fileops`, and the existing independent `internal/update`. The dashboard is embedded from `internal/app/web/dashboard.html`; `go build .` remains supported.
+- Modular source layout: a thin root `main.go`, application/UI orchestration in `internal/app`, synchronization in `internal/syncengine`, and shared filesystem safety in `internal/fileops`. The dashboard is embedded from `internal/app/web/dashboard.html`; `go build .` remains supported.
+- Single-executable releases: pushing a version tag runs Windows tests/vet, builds `FolderBridge.exe` and creates a draft release for manual publication. No signing setup or automated in-app upgrade flow.
+- Self-updating was removed before deployment: no update controls/settings, helper, background downloads, startup recovery, update manifests or signing tools remain.
+- Private-folder validation uses filesystem identity so Windows short names and extended paths cannot bypass the settings exclusion.
 
-**Validation:** Windows 11-native helper/lock/ACL/junction/recovery tests, real transfer-drain tests, regression tests and race detection have been run. Linux regression/trust tests also pass under WSL. The occupied-port lifecycle exclusion, production key/release setup, unexecuted GitHub publication workflow and remaining Windows 10/interactive/power-cut checks are documented in [v3.3 validation](review/V33-VALIDATION.md). This is not a claim that all release gates are complete.
+**Validation:** Current checks and remaining Windows desktop/two-PC/manual acceptance limits are documented in [removal validation](review/UPDATER-REMOVAL.md). Older review reports describe historical implementations, not the current release process.
 
 ### New in v3.2
 
@@ -159,7 +157,7 @@ build/
 - Watcher-triggered scans still enumerate the directory tree; unchanged contents generally reuse their hash. Changed files are transferred in full (no block-level delta synchronization).
 - Ignore pattern support covers the common Git syntax, but is not a full implementation of Git wildmatch (e.g. it does not read `.git/info/exclude` or global Git excludes).
 - You may see Windows security prompts because this is a custom **unsigned executable**. Do not override a corporate restriction to run it.
-- The current validation build was built with native Windows Go. Automated Windows tests, including the locked-destination test, and Linux tests pass; see [module-refactor validation](review/REFACTOR-VALIDATION.md) for current commands and the occupied-port test exclusion. The Windows tray menu and login startup have **not been interactively verified on a Windows desktop**.
+- The current validation build was built with native Windows Go. Automated Windows tests, including the locked-destination test, and Linux tests pass; see [current validation](review/UPDATER-REMOVAL.md) for commands and the occupied-port test exclusion. The Windows tray menu and login startup have **not been interactively verified on a Windows desktop**.
 - A process crash during a multi-file batch may leave some files already committed; the next scan reconciles them. **Multi-file batches are not all-or-nothing transactions.**
 - The temporary-file namespace `.fb-part-*` is reserved anywhere inside the synchronized tree; do not use it for user files.
 
@@ -167,19 +165,19 @@ build/
 
 Per-user application data is stored in `%AppData%\FolderBridge\`:
 
-- `config.json`: role, folder, peer invite or host pairing secret, optional persisted pause state and backward-compatible `updates` settings. Startup preference is stored in the Windows per-user Run registry key, not here.
+- `config.json`: role, folder, peer invite or host pairing secret, and optional persisted pause state. Startup preference is stored in the Windows per-user Run registry key, not here.
 - `peer-cert.pem`, `peer-key.pem`: TLS identity for hosting.
 - `baseline-*.json`: content hashes recorded at the last successful sync.
 - `index-*.json`: best-effort persistent SHA-256 hash cache keyed by local folder; deleting it only makes the next scan rehash files.
-- `update-state.json`, `update-result.json`, `updates/`: check/download status, installation results/quarantine and signed staging evidence. These are independent of pairing and synchronization state.
 
 Do not copy the configuration directory into the shared folder; the app refuses a selected folder that contains its own settings directory. Deleting a baseline starts a fresh **merge**, not a new round of deletions.
 
-### First upgrade from v3.2 or earlier
+### Manual upgrades
 
-1. In the FolderBridge browser dashboard, click **Quit app** on both PCs (do not just close the browser tab).
-2. Extract the first trusted v3.3 Windows release into each application directory and start `FolderBridge.exe` again. An old v3.2 executable cannot perform this bootstrap automatically.
-3. Confirm **v3.3.0** in the control panel and that the joining PC says **Up to date**. Your configuration and baselines under `%AppData%\FolderBridge` remain unchanged.
+1. Download the new `FolderBridge.exe` from the trusted release page.
+2. Choose **Quit app** on both PCs; closing the browser tab is not sufficient.
+3. Keep a copy of the previous executable if desired, replace `FolderBridge.exe`, and restart on both PCs. Leave `%AppData%\FolderBridge` and your synchronized folders alone.
+4. Confirm the expected version in the dashboard and verify synchronization. See [upgrade details](docs/UPDATING.md).
 
 ### Build from source
 
@@ -188,7 +186,6 @@ Requires Go 1.23 or newer. In the source directory:
 ```powershell
 go test ./...
 go build -trimpath -ldflags="-s -w -H=windowsgui" -o FolderBridge.exe .
-go build -trimpath -ldflags="-s -w -H=windowsgui" -o FolderBridge-Updater.exe ./cmd/folderbridge-updater
 ```
 
 On Linux/macOS, cross-compile for Windows x64:
@@ -197,8 +194,8 @@ On Linux/macOS, cross-compile for Windows x64:
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -H=windowsgui' -o FolderBridge.exe .
 ```
 
-These source builds deliberately have no update trust key and cannot self-update. For key-pinned production builds, offline signing, release workflows, recovery and the reorganized source layout, see [docs/UPDATING.md](docs/UPDATING.md).
+For tagged draft releases and build-version metadata, see [release instructions](docs/RELEASING.md). No signing key or separate helper is needed.
 
-See [source architecture](docs/ARCHITECTURE.md) for ownership, interfaces and dependency direction, and [module-refactor validation](review/REFACTOR-VALIDATION.md) for current checks. Tests live alongside their owning modules: app controls/update integration in `internal/app`, transfers/renames/watchers/draining in `internal/syncengine`, filesystem integrity/replacement in `internal/fileops`, and signature/archive/helper recovery in `internal/update`.
+See [source architecture](docs/ARCHITECTURE.md) for ownership, interfaces and dependency direction, and [current validation](review/UPDATER-REMOVAL.md) for executed checks. Tests live alongside their owners: configuration/dashboard/tray in `internal/app`, transfers/renames/watchers/baselines in `internal/syncengine`, and filesystem integrity/replacement in `internal/fileops`.
 
 **Acceptable use:** Only synchronize files and devices you are authorized to connect. A restriction on Syncthing or external file transfer may be intentional; if so, use an approved corporate transfer solution instead.

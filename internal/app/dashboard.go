@@ -14,6 +14,7 @@ func (a *application) status() any {
 	defer a.mu.RUnlock()
 	status := a.engine.Snapshot()
 	return struct {
+		Version   string                `json:"version"`
 		Mode      string                `json:"mode"`
 		Folder    string                `json:"folder"`
 		Invite    string                `json:"invite"`
@@ -27,7 +28,7 @@ func (a *application) status() any {
 		Index     syncengine.ScanStats  `json:"index"`
 		Links     []string              `json:"links"`
 		Events    []string              `json:"events"`
-	}{a.cfg.Mode, a.cfg.Folder, a.cfg.Invite, a.cfg.Enabled, a.cfg.Paused, startup, status.State, status.Error, status.LastSync.Format("2006-01-02 15:04:05"), status.Result, status.Index, status.Links, status.Events}
+	}{Version, a.cfg.Mode, a.cfg.Folder, a.cfg.Invite, a.cfg.Enabled, a.cfg.Paused, startup, status.State, status.Error, status.LastSync.Format("2006-01-02 15:04:05"), status.Result, status.Index, status.Links, status.Events}
 }
 
 func (a *application) isPaused() bool {
@@ -38,7 +39,7 @@ func (a *application) isPaused() bool {
 
 func (a *application) uiHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		fmt.Fprint(w, pageHTML)
@@ -61,7 +62,6 @@ func (a *application) uiHandler() http.Handler {
 			fn(w, r)
 		}
 	}
-	a.updateRoutes(mux, jsonAction)
 	mux.HandleFunc("GET /api/ignore", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.RLock()
 		cfg := a.cfg

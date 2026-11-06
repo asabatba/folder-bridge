@@ -1,5 +1,10 @@
 # Module-refactor validation
 
+> Historical refactor evidence. The self-updater was subsequently removed;
+> its module, commands, drain API and release gates below no longer apply.
+> See [current validation](UPDATER-REMOVAL.md) and
+> [manual release instructions](../docs/RELEASING.md).
+
 ## Scope and status
 
 The user-approved option B is implemented: one thin root launcher, `internal/app`,

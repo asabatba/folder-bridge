@@ -1,5 +1,10 @@
 # v3.3 implementation and validation
 
+> Historical self-updater implementation evidence, superseded by complete
+> removal before deployment. Signing/helper/automated-rollback requirements
+> below are no longer active. See [current validation](UPDATER-REMOVAL.md) and
+> [manual release instructions](../docs/RELEASING.md).
+
 This records the initial v3.3 implementation at commit `3871d66`; root-package
 paths and test counts below are historical. The subsequent approved module
 extraction and current checks are in [REFACTOR-VALIDATION.md](REFACTOR-VALIDATION.md).

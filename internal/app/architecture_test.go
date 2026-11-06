@@ -50,10 +50,9 @@ func TestThinRootEntrypoint(t *testing.T) {
 func TestModuleDependencyDirections(t *testing.T) {
 	root := repositoryRoot(t)
 	allowed := map[string]map[string]bool{
-		"app":        {"folderbridge/internal/syncengine": true, "folderbridge/internal/fileops": true, "folderbridge/internal/update": true},
+		"app":        {"folderbridge/internal/syncengine": true, "folderbridge/internal/fileops": true},
 		"syncengine": {"folderbridge/internal/fileops": true},
 		"fileops":    {},
-		"update":     {},
 	}
 	for module, imports := range allowed {
 		t.Run(module, func(t *testing.T) {

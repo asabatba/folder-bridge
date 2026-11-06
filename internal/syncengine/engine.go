@@ -1,10 +1,9 @@
 // Package syncengine owns peer operation, reconciliation, watching and durable
-// synchronization state. It does not depend on the dashboard, tray or updater.
+// synchronization state. It does not depend on the dashboard or tray.
 package syncengine
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"folderbridge/internal/fileops"
 	"net/http"
@@ -14,12 +13,9 @@ import (
 )
 
 // Options describes a synchronization session, not its persisted app settings.
-// CheckBaseline requests synchronous baseline validation before startup (used
-// when the caller must establish initialization health before accepting a build).
 type Options struct {
 	Mode, Folder, Invite, Secret string
 	Enabled, Paused              bool
-	CheckBaseline                bool
 }
 
 // Status is a detached snapshot: callers never acquire engine/scanner locks.
@@ -29,18 +25,14 @@ type Status struct {
 	Result        SyncResult
 	Index         ScanStats
 	Links, Events []string
-	Draining      bool
 }
 
-// Engine owns all synchronization contexts, servers, scanners and admission gates.
-// Start, Stop and Quiesce serialize lifecycle transitions internally.
+// Engine owns synchronization contexts, servers, scanners and persisted state.
+// Start and Stop serialize lifecycle transitions internally.
 type Engine struct {
 	mu               sync.RWMutex
 	controlMu        sync.Mutex
 	syncMu           sync.Mutex
-	requestGate      sync.RWMutex
-	draining         bool
-	syncPersistErr   error
 	home             string
 	cfg              Options
 	state, lastError string
@@ -128,7 +120,7 @@ func (a *Engine) Snapshot() Status {
 	if a.hostScanner != nil {
 		stats = a.hostScanner.Stats()
 	}
-	return Status{State: a.state, Error: a.lastError, LastSync: a.lastSync, Result: a.lastResult, Index: stats, Links: links, Events: append([]string{}, a.events...), Draining: a.draining}
+	return Status{State: a.state, Error: a.lastError, LastSync: a.lastSync, Result: a.lastResult, Index: stats, Links: links, Events: append([]string{}, a.events...)}
 }
 
 // ReportError records a failed synchronization control operation. Repeated
@@ -158,67 +150,4 @@ func (a *Engine) ApproveBulkDelete() {
 	a.allowMassDelete = true
 	a.mu.Unlock()
 	a.RequestSync()
-}
-
-// Quiesce gates new work and waits for admitted writes and the last client cycle
-// to persist its baseline. It never cancels active transfer contexts. A failed
-// handoff automatically resumes synchronization; a successful handoff keeps new
-// work gated until Stop. The callback must not invoke lifecycle transitions.
-func (a *Engine) Quiesce(handoff func() error) error {
-	a.controlMu.Lock()
-	defer a.controlMu.Unlock()
-	a.mu.Lock()
-	if a.draining {
-		a.mu.Unlock()
-		return errors.New("update installation is in progress")
-	}
-	a.draining = true
-	a.mu.Unlock()
-	committed := false
-	defer func() {
-		if !committed {
-			a.mu.Lock()
-			a.draining = false
-			a.mu.Unlock()
-			a.RequestSync()
-		}
-	}()
-	a.syncMu.Lock()
-	defer a.syncMu.Unlock()
-	a.requestGate.Lock()
-	defer a.requestGate.Unlock()
-	a.mu.RLock()
-	err := a.syncPersistErr
-	a.mu.RUnlock()
-	if err != nil {
-		return fmt.Errorf("persist synchronization state before update: %w", err)
-	}
-	if err := handoff(); err != nil {
-		return err
-	}
-	committed = true
-	return nil
-}
-
-// hostDuringUpdate drains all admitted handlers, including writes and batches.
-func (a *Engine) hostDuringUpdate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a.mu.RLock()
-		draining := a.draining
-		a.mu.RUnlock()
-		if draining {
-			http.Error(w, "host restarting for approved update", http.StatusServiceUnavailable)
-			return
-		}
-		a.requestGate.RLock()
-		defer a.requestGate.RUnlock()
-		a.mu.RLock()
-		draining = a.draining
-		a.mu.RUnlock()
-		if draining {
-			http.Error(w, "host restarting for approved update", http.StatusServiceUnavailable)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

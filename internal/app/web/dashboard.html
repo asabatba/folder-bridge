@@ -8,8 +8,7 @@ main {max-width:760px; margin:35px auto; padding:0 18px 35px} h1{margin:0;font-s
 p{margin:7px 0} .muted,.hint{color:var(--muted)} .hint{font-size:12px;margin-top:5px}
 .panel{border:1px solid var(--border);border-radius:12px;background:var(--panel);margin-top:16px;padding:19px 21px}
 .status{display:flex;align-items:center;gap:9px;font-weight:650} .dot{width:9px;height:9px;border-radius:50%;background:#7c8895} .dot.ok{background:#168558} .dot.bad{background:#c74747}.dot.paused{background:#c18422}
-label{display:block;font-weight:600;margin:15px 0 5px} input[type=text],input[type=number],textarea{display:block;width:100%;border:1px solid #bac7d2;border-radius:6px;font:inherit;padding:10px 11px;color:var(--text)}
-input[type=number]{max-width:140px}
+label{display:block;font-weight:600;margin:15px 0 5px} input[type=text],textarea{display:block;width:100%;border:1px solid #bac7d2;border-radius:6px;font:inherit;padding:10px 11px;color:var(--text)}
 textarea{min-height:77px;resize:vertical;overflow-wrap:anywhere;font-size:12px}
 .modes{display:flex;gap:20px;margin:7px 0 15px}.modes label{margin:0;cursor:pointer}
 button{background:var(--accent);color:white;border:1px solid var(--accent);border-radius:7px;padding:9px 13px;font:600 13px system-ui;cursor:pointer}
@@ -43,18 +42,6 @@ button:disabled{opacity:.5;cursor:default}button.secondary{background:white;colo
 <label style="font-weight:normal;margin:0"><input type="checkbox" id="autostart"> Launch FolderBridge when I sign in to Windows</label>
 <p class="hint">Starts minimized to the system tray for this Windows user only. No administrator rights required. Right-click the tray icon to open the dashboard, open the folder, pause, or quit.</p>
 <div id="startupmessage" class="small muted"></div></section>
-<section class="panel"><h2>Updates</h2>
-<p id="updatestatus" role="status">Loading update status...</p>
-<p class="small muted">Available version: <span id="availableversion">None</span> · Last checked: <span id="updatechecked">Never</span></p>
-<p class="small" id="updateresult" style="white-space:pre-wrap;overflow-wrap:anywhere"></p>
-<p><a id="updatenotes" target="_blank" rel="noopener noreferrer" hidden>Release notes</a> · <a href="https://github.com/asabatba/folder-bridge/releases" target="_blank" rel="noopener noreferrer">Manual upgrades</a></p>
-<div class="actions"><button class="secondary" id="updatecheck">Check for updates</button><button class="secondary" id="updatedownload" hidden>Download update</button><button id="updateinstall" disabled>Update ready — Restart to install</button><button class="secondary" id="updateskip" hidden>Skip this version</button><button class="secondary" id="updateretry" hidden>Retry failed version</button></div>
-<label style="font-weight:normal"><input type="checkbox" id="updatesenabled"> Enable update checks</label>
-<label style="font-weight:normal"><input type="checkbox" id="updatesdownload"> Download verified updates automatically</label>
-<label for="updateinterval">Check interval (hours, 1–720)</label><input type="number" id="updateinterval" min="1" max="720" value="24">
-<div class="actions"><button class="secondary" id="updatesettings">Save update settings</button></div>
-<p class="hint">Stable releases only. Installation always needs your approval. FolderBridge waits for active synchronization to finish before restarting. No administrator rights or policy bypass.</p>
-<p id="updatemessage" class="small muted" role="status"></p></section>
 <section class="panel"><h2>Ignore rule inspector</h2>
 <p class="hint">Enter a path relative to the configured sync folder (for example <code>src/cache/data.json</code>). The joining PC checks both computers' rules; the hosting PC checks only its own.</p>
 <label for="inspectpath">Relative file path</label><input type="text" id="inspectpath" placeholder="src/cache/data.json" spellcheck="false">
@@ -96,29 +83,9 @@ byId('inspect').onclick=async()=>{
   el.textContent=describe('This PC',d.local)+'\n\n'+describe('Other PC',d.remote)+'\n'+d.remoteStatus+'\n\nEffective: '+(d.effective?'IGNORED':'not ignored by available rules');
  }catch(e){el.textContent=e.message}
 };
-let updateSettings=null, updatesInitialized=false;
-async function updateAction(action){try{await post('/api/updates/'+action);byId('updatemessage').textContent=action==='install'?'Waiting for active synchronization, then restarting...':'Request accepted.';await refreshUpdates()}catch(e){byId('updatemessage').textContent=e.message}}
-byId('updatecheck').onclick=()=>updateAction('check');
-byId('updatedownload').onclick=()=>updateAction('download');
-byId('updateskip').onclick=()=>updateAction('skip');
-byId('updateinstall').onclick=()=>{if(confirm('Restart FolderBridge to install the verified update? Active synchronization will finish first.'))updateAction('install')};
-byId('updateretry').onclick=()=>{if(confirm('Explicitly retry the failed version? It will be downloaded and verified again. Installation still requires approval.'))updateAction('retry')};
-byId('updatesettings').onclick=async()=>{if(!updateSettings)return;try{await post('/api/updates/settings',{...updateSettings,enabled:byId('updatesenabled').checked,autoDownload:byId('updatesdownload').checked,checkIntervalHours:Number(byId('updateinterval').value)});byId('updatemessage').textContent='Update settings saved.';updatesInitialized=false;await refreshUpdates()}catch(e){byId('updatemessage').textContent=e.message}};
-async function refreshUpdates(){
- try{const response=await fetch('/api/updates',{cache:'no-store'});if(!response.ok)throw new Error('Cannot read update status');const u=await response.json();
- updateSettings=u.settings;
- byId('currentversion').textContent='v'+u.currentVersion;
- byId('updatestatus').textContent=u.state;byId('availableversion').textContent=u.availableVersion?'v'+u.availableVersion:'None';
- byId('updatechecked').textContent=u.lastCheck?.startsWith('0001-')?'Never':new Date(u.lastCheck).toLocaleString();byId('updateresult').textContent=(u.lastResult||'No update result yet')+(u.installationResult&&u.installationResult!==u.lastResult?'\nLast installation: '+u.installationResult:'');
- byId('updatenotes').hidden=!u.releaseNotes;if(u.releaseNotes)byId('updatenotes').href=u.releaseNotes;
- const enabled=!!u.settings.enabled;
- byId('updatecheck').disabled=!enabled;byId('updateinstall').disabled=!enabled||!u.ready||['checking','downloading','waiting for synchronization to finish'].includes(u.state);
- byId('updatedownload').hidden=!enabled||!u.availableVersion||u.ready;byId('updateskip').hidden=!u.availableVersion;byId('updateretry').hidden=!enabled||!u.failedVersion;
- if(!updatesInitialized){byId('updatesenabled').checked=enabled;byId('updatesdownload').checked=u.settings.autoDownload;byId('updateinterval').value=u.settings.checkIntervalHours;updatesInitialized=true}
- }catch(e){byId('updatestatus').textContent='Update status unavailable'}
-}
 async function refresh(){
  try{const response=await fetch('/api/status',{cache:'no-store'});const d=await response.json();
+  byId('currentversion').textContent='v'+d.version;
   if(!initialized){const selected=d.mode==='join'?'join':'host';document.querySelector('input[name=mode][value='+selected+']').checked=true;byId('folder').value=d.folder||'';byId('invite').value=d.invite||'';updateMode();initialized=true}
   byId('state').textContent=d.state||'Stopped';byId('dot').className='dot '+(/Up to date|Hosting/.test(d.state)?'ok':/Error|Partial/.test(d.state)?'bad':d.paused?'paused':'');window.currentPaused=!!d.paused;byId('pause').textContent=d.paused?'Resume syncing':'Pause syncing';byId('pause').disabled=!d.enabled||d.mode==='off';byId('sync').disabled=d.paused||!d.enabled||d.mode!=='join';byId('autostart').checked=!!d.autostart;
   byId('errors').textContent=d.error||'';byId('bulk').style.display=d.error?.startsWith('Safety stop:')?'inline-block':'none';byId('last').textContent=d.lastSync?.startsWith('0001-')?'Never':(d.lastSync||'Never');
@@ -133,5 +100,5 @@ async function refresh(){
   byId('events').replaceChildren();(d.events?.length?d.events:['No activity yet']).forEach(event=>{let li=document.createElement('li');li.textContent=event;byId('events').appendChild(li)})
  }catch(e){byId('state').textContent='Not connected to app'}
 }
-refresh();refreshUpdates();setInterval(()=>{refresh();refreshUpdates()},2500);
+refresh();setInterval(refresh,2500);
 </script></body></html>

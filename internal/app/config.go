@@ -10,17 +10,15 @@ import (
 
 	"folderbridge/internal/fileops"
 	"folderbridge/internal/syncengine"
-	"folderbridge/internal/update"
 )
 
 type config struct {
-	Mode    string           `json:"mode"` // "host", "join" or "off"
-	Folder  string           `json:"folder"`
-	Invite  string           `json:"invite,omitempty"`
-	Secret  string           `json:"secret,omitempty"`
-	Enabled bool             `json:"enabled"`
-	Paused  bool             `json:"paused,omitempty"`
-	Updates *update.Settings `json:"updates,omitempty"`
+	Mode    string `json:"mode"` // "host", "join" or "off"
+	Folder  string `json:"folder"`
+	Invite  string `json:"invite,omitempty"`
+	Secret  string `json:"secret,omitempty"`
+	Enabled bool   `json:"enabled"`
+	Paused  bool   `json:"paused,omitempty"`
 }
 
 func (a *application) saveConfig() error {
@@ -83,12 +81,6 @@ func validateFolder(raw, home string) (string, error) {
 func (a *application) configure(req config) error {
 	a.controlMu.Lock()
 	defer a.controlMu.Unlock()
-	a.mu.RLock()
-	draining := a.draining
-	a.mu.RUnlock()
-	if draining {
-		return errors.New("update installation is in progress")
-	}
 	if req.Mode != "host" && req.Mode != "join" && req.Mode != "off" {
 		return errors.New("choose Host, Join, or Stop")
 	}
@@ -124,8 +116,6 @@ func (a *application) configure(req config) error {
 		a.mu.RUnlock()
 	}
 	a.mu.Lock()
-	// Sync configuration requests never overwrite independently managed updates.
-	req.Updates = a.cfg.Updates
 	a.cfg = req
 	err := a.saveConfig()
 	a.mu.Unlock()

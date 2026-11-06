@@ -1,16 +1,13 @@
 # Changelog
 
-## v3.3 — Self-updater (release gates pending)
+## v3.3 — Modular app and manual releases (unreleased)
 
-- Discover stable releases from the fixed public `asabatba/folder-bridge` GitHub repository at startup and every 24 hours; stream background downloads with bounded sizes/retries.
-- Verify exact Ed25519-signed manifest bytes, ZIP SHA-256, minimum updater version, Windows x64 PE headers, strict archive entries and HTTPS download/redirect origins. Builds without an embedded public key fail closed.
-- Add tray and dashboard update controls, explicit restart approval, skip-version settings, update status/history and explicit retry of quarantined failures. Automatic installation is not supported.
-- Drain real host writes and client sync cycles without cancellation, require baseline/config persistence, then hand off to a standalone Go helper. Preserve config, pairing, ignore files, history, pause state and protocol compatibility.
-- Add same-volume replacement, durable old-EXE backup and transaction journal, authenticated initialization health with a 30-second deadline, rollback and independently verified crash-recovery execution. Respect ACLs, sharing locks and device policy without elevation.
-- Add offline key/sign/package/verify tooling and a two-phase GitHub Actions workflow: unsigned draft build, then verification/publication of an externally signed manifest. The private key never enters CI.
-- Refactor into deep modules: a thin root launcher, `internal/app` for settings/dashboard/tray/update orchestration, `internal/syncengine` for synchronization lifecycle and drain/baseline guarantees, and `internal/fileops` for shared guarded filesystem operations. Keep `internal/update` independent and commands in `cmd/`; embed `internal/app/web/dashboard.html`. Preserve `go build .`, wire/state formats and dependencies. Tests follow their owning behavior and enforce dependency direction.
-- Add Windows-native executable/helper, health, rollback, interrupted transaction, ACL, junction and sharing-lock integration tests; general trust/download/archive tests; real transfer-drain and v3.2 configuration regressions. Update the dashboard test to check its dynamic version element rather than a hard-coded old version.
-- Production signing key/release activation, GitHub publication execution, Windows 10/interactive desktop and physical power-loss checks remain release gates. See [updater instructions](docs/UPDATING.md) and [validation evidence](review/V33-VALIDATION.md). An unmodified v3.2 app requires one manual bootstrap installation.
+- Keep a thin root launcher, `internal/app` for settings/dashboard/tray orchestration, `internal/syncengine` for synchronization lifecycle/baselines, and `internal/fileops` for shared guarded filesystem operations. Embed `internal/app/web/dashboard.html`; preserve `go build .` and dependency direction.
+- Remove the pre-deployment self-updater completely: background checks/downloads, settings, tray/dashboard controls, helper, health/recovery/rollback, signing/package tools and updater-only engine handoff/admission code. No updater compatibility layer remains.
+- Restore a single-executable release flow: stable tag → Windows tests/vet → `FolderBridge.exe` → unpublished GitHub draft. Publication and upgrades are manual; no signing key or helper is required. See [release instructions](docs/RELEASING.md) and [manual upgrades](docs/UPDATING.md).
+- Display standalone build-version metadata through the normal status endpoint. Removed updater routes return 404. Synchronization configuration has only its six ordinary fields.
+- Preserve ordinary pause/stop cancellation, pairing, LAN protocol, baselines, guarded file writes and the Windows private-settings identity fix. Retain unreadable-baseline regression coverage without candidate-initialization machinery.
+- Current Windows/Linux/race/build/dashboard checks and remaining hosted/interactive acceptance limits are in [removal validation](review/UPDATER-REMOVAL.md). Earlier updater reports are historical, not production release requirements.
 
 ## Unreleased — Path safety and dashboard hardening
 

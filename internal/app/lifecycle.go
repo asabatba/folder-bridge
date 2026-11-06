@@ -8,12 +8,10 @@ import (
 func (c config) engineOptions() syncengine.Options {
 	return syncengine.Options{Mode: c.Mode, Folder: c.Folder, Invite: c.Invite, Secret: c.Secret, Enabled: c.Enabled, Paused: c.Paused}
 }
-func (a *application) startPeer() error { return a.startPeerChecked(false) }
-func (a *application) startPeerChecked(checkBaseline bool) error {
+func (a *application) startPeer() error {
 	a.mu.RLock()
 	cfg := a.cfg.engineOptions()
 	a.mu.RUnlock()
-	cfg.CheckBaseline = checkBaseline
 	return a.engine.Start(cfg)
 }
 func (a *application) stopPeer()    { a.engine.Stop() }
@@ -24,11 +22,7 @@ func (a *application) setPaused(paused bool) error {
 	defer a.controlMu.Unlock()
 	a.mu.RLock()
 	cfg := a.cfg
-	draining := a.draining
 	a.mu.RUnlock()
-	if draining {
-		return errors.New("update installation is in progress")
-	}
 	if !cfg.Enabled || cfg.Mode == "off" {
 		return errors.New("configure and start a folder before using pause")
 	}

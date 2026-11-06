@@ -1,5 +1,5 @@
 // Package app owns process orchestration, settings and the local dashboard/tray.
-// Synchronization and update internals live behind their respective modules.
+// Synchronization internals live behind the engine module.
 package app
 
 import (
@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"folderbridge/internal/syncengine"
-	"folderbridge/internal/update"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,10 +16,8 @@ type application struct {
 	mu        sync.RWMutex
 	controlMu sync.Mutex
 	engine    *syncengine.Engine
-	updates   *update.Manager
 	home      string
 	cfg       config
-	draining  bool
 	quit      chan struct{}
 	quitOnce  sync.Once
 	notifyFn  func(string, string, bool)
@@ -28,8 +25,6 @@ type application struct {
 
 func newApp(home string) (*application, error) {
 	app := &application{home: home, quit: make(chan struct{})}
-	defaults := update.DefaultSettings()
-	app.cfg.Updates = &defaults
 	data, err := os.ReadFile(filepath.Join(home, "config.json"))
 	if err == nil {
 		if err := json.Unmarshal(data, &app.cfg); err != nil {
@@ -38,14 +33,7 @@ func newApp(home string) (*application, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	if app.cfg.Updates == nil {
-		app.cfg.Updates = &defaults
-	}
-	if err := app.cfg.Updates.Validate(); err != nil {
-		return nil, fmt.Errorf("update settings: %w", err)
-	}
 	app.engine = syncengine.New(home, app.notify)
-	app.updates = update.NewManager(home, func(msg string) { app.notify("FolderBridge update", msg, false) })
 	return app, nil
 }
 func (a *application) setError(msg string) { a.engine.ReportError(msg) }

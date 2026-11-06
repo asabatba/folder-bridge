@@ -3,11 +3,16 @@ package syncengine_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"folderbridge/internal/syncengine"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"folderbridge/internal/syncengine"
 )
 
 func TestPublicPausedLifecycleAndDetachedHistory(t *testing.T) {
@@ -35,19 +40,42 @@ func TestPublicPausedLifecycleAndDetachedHistory(t *testing.T) {
 		t.Fatal("stop did not publish state")
 	}
 }
-func TestCandidateInitializationRequiresReadableLegacyBaseline(t *testing.T) {
+
+func TestUnreadableBaselineReportsErrorWithoutRewriting(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
-	invite := "folderbridge://127.0.0.1:48713/" + strings.Repeat("a", 48) + "?fp=" + strings.Repeat("b", 64)
-	// An independent fixture of the existing on-disk name, not a new storage format.
+	var manifests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/manifest" {
+			manifests.Add(1)
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	pin := sha256.Sum256(server.TLS.Certificates[0].Certificate[0])
+	invite := "folderbridge://" + strings.TrimPrefix(server.URL, "https://") + "/" + strings.Repeat("a", 48) + "?fp=" + hex.EncodeToString(pin[:])
 	key := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(root)) + "\n" + invite))
 	baseline := filepath.Join(home, "baseline-"+hex.EncodeToString(key[:12])+".json")
-	if err := os.WriteFile(baseline, []byte("{broken json"), 0600); err != nil {
+	const broken = "{broken json"
+	if err := os.WriteFile(baseline, []byte(broken), 0600); err != nil {
 		t.Fatal(err)
 	}
 	e := syncengine.New(home, nil)
 	defer e.Stop()
-	err := e.Start(syncengine.Options{Mode: "join", Folder: root, Invite: invite, Enabled: true, CheckBaseline: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot load synchronization baseline") {
-		t.Fatal("candidate accepted unreadable baseline", err)
+	if err := e.Start(syncengine.Options{Mode: "join", Folder: root, Invite: invite, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for !strings.Contains(e.Snapshot().Error, "Baseline:") {
+		if time.Now().After(deadline) {
+			t.Fatal("baseline error did not reach status", e.Snapshot())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	e.Stop()
+	if manifests.Load() != 0 {
+		t.Fatal("reconciliation continued with an unreadable baseline")
+	}
+	if got, err := os.ReadFile(baseline); err != nil || string(got) != broken {
+		t.Fatal("unreadable baseline was overwritten", err)
 	}
 }

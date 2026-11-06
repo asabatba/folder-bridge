@@ -18,10 +18,6 @@ func (a *Engine) Start(cfg Options) error {
 	a.controlMu.Lock()
 	defer a.controlMu.Unlock()
 	a.mu.Lock()
-	if a.draining {
-		a.mu.Unlock()
-		return errors.New("update installation is in progress")
-	}
 	a.cfg = cfg
 	a.lastError = ""
 	a.mu.Unlock()
@@ -34,11 +30,6 @@ func (a *Engine) Start(cfg Options) error {
 		}
 		a.mu.Unlock()
 		return nil
-	}
-	if cfg.CheckBaseline && cfg.Mode == "join" {
-		if _, err := loadBaseline(baselineFilename(a.home, cfg.Folder, cfg.Invite)); err != nil {
-			return fmt.Errorf("updated engine cannot load synchronization baseline: %w", err)
-		}
 	}
 	if err := fileops.CheckSyncRoot(cfg.Folder); err != nil {
 		return fmt.Errorf("unsafe sync folder: %w", err)
@@ -73,7 +64,7 @@ func (a *Engine) Start(cfg Options) error {
 			a.mu.Unlock()
 			a.addEvent("Paired computer connected")
 		}
-		server := &http.Server{Handler: a.hostDuringUpdate(host.handler()), ReadHeaderTimeout: 10 * time.Second}
+		server := &http.Server{Handler: host.handler(), ReadHeaderTimeout: 10 * time.Second}
 		a.mu.Lock()
 		a.fingerprint = pin
 		a.hostScanner = host.scanner
@@ -103,8 +94,7 @@ func (a *Engine) Start(cfg Options) error {
 	return nil
 }
 
-// Stop cancels synchronization and closes the owned host listener. Update
-// installation must first use Quiesce so admitted writes finish before shutdown.
+// Stop cancels synchronization and closes the owned host listener.
 func (a *Engine) Stop() {
 	a.controlMu.Lock()
 	defer a.controlMu.Unlock()
@@ -168,18 +158,11 @@ func (a *Engine) runSync(ctx context.Context, cfg Options, p *peer, scanner *sca
 		return
 	}
 	a.mu.Lock()
-	if a.draining {
-		a.mu.Unlock()
-		return
-	}
 	a.state = "Synchronizing"
 	a.mu.Unlock()
 	filename := baselineFilename(a.home, cfg.Folder, cfg.Invite)
 	base, err := loadBaseline(filename)
 	if err != nil {
-		a.mu.Lock()
-		a.syncPersistErr = err
-		a.mu.Unlock()
 		a.ReportError("Baseline: " + err.Error())
 		return
 	}
@@ -192,14 +175,10 @@ func (a *Engine) runSync(ctx context.Context, cfg Options, p *peer, scanner *sca
 		return
 	}
 	if err := saveBaseline(filename, next); err != nil {
-		a.mu.Lock()
-		a.syncPersistErr = err
-		a.mu.Unlock()
 		a.ReportError("Save baseline: " + err.Error())
 		return
 	}
 	a.mu.Lock()
-	a.syncPersistErr = nil
 	a.lastResult = result
 	a.lastStats = scanner.Stats()
 	a.lastSync = time.Now()
