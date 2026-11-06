@@ -1,8 +1,9 @@
 # Equal-peer session validation
 
-Status: implementation/local verification complete; v4.0.0 public release authorized
-and being prepared. Physical/manual acceptance remains unverified and is explicitly
-accepted by the user for this publication after successful hosted Windows checks.
+Status: implementation/local verification complete; **v4.0.0 publicly released**
+after successful hosted checks and source/asset verification. Physical/manual
+acceptance remains unverified and was explicitly accepted by the user for this
+publication. The running installed app remains untouched.
 
 ## Implemented scope
 
@@ -49,7 +50,8 @@ The same Go 1.23.12 toolchain cross-builds each package with `GOOS=linux`,
 
 - **87 tests pass**: app 22, syncengine 60, fileops 5.
 - Linux `go vet ./...` and root build pass.
-- Linux race detection was not run; native Windows race detection was.
+- Linux race detection was not run locally; it subsequently passed on hosted
+  Ubuntu for both the source branch and release tag (see publication below).
 
 Logs: `dist/peer-session/linux-{app,syncengine,fileops}-final.log`.
 
@@ -126,17 +128,52 @@ remain in the full suite.
 
 This is a local development build, not a published release or an installed upgrade.
 
-## v4.0.0 publication authorization
+## v4.0.0 publication
 
-The user chose public stable publication (not draft-only), after GitHub's Windows
-release checks pass, explicitly accepting the manual gaps below. Target tag:
-`v4.0.0`, verified unused before preparation. The existing v3.3.1 draft is unrelated
-and will be left unchanged. The tagged workflow must build the single EXE from the
-expected source commit before its draft is published. Fresh pairing, `.fbignore`
-rename requirements and the known gaps will be included in release notes.
+The user chose public stable publication (not draft-only), explicitly accepting
+the manual gaps below after hosted checks pass. Source commit and annotated tag
+were pushed; the tag was verified unused beforehand. Existing v3 tags and the
+v3.3.1 draft were left unchanged. No installed-app change was authorized or made.
 
-Hosted execution, tag/commit/asset evidence and public URL will be recorded after
-completion. No installed-app change is authorized by this release request.
+- Source commit: `e918eee1954e05083ecf7417150c4216421d7325`.
+- Annotated tag: `v4.0.0` (tag object `212adad1e89d21350e200befa9b4c5694b93fea2`).
+- [Public stable release](https://github.com/asabatba/folder-bridge/releases/tag/v4.0.0),
+  published **2026-11-06 23:19:24 UTC**; draft/prerelease both false.
+- [Tagged Windows release job](https://github.com/asabatba/folder-bridge/actions/runs/42308065424):
+  tests, vet, versioned GUI build and single-EXE draft creation all pass.
+- [Tagged Windows/Ubuntu test jobs](https://github.com/asabatba/folder-bridge/actions/runs/42308065441)
+  and [source main test jobs](https://github.com/asabatba/folder-bridge/actions/runs/42308060336)
+  all pass, including Ubuntu race detection.
+
+### Published asset verification
+
+- Exactly one attached asset: unsigned Windows x64 `FolderBridge.exe`.
+- [Public download](https://github.com/asabatba/folder-bridge/releases/download/v4.0.0/FolderBridge.exe).
+- Bytes: **7,288,320**.
+- SHA-256: `6b9158c2a2be53aa507e9d275205f6a6212db471942e0e98780e3c7319a1f99a`.
+- Downloaded draft asset hash/size match GitHub's asset digest. Go build metadata
+  confirms Go 1.23.12, Windows amd64, exact source revision above and
+  `vcs.modified=false`; hosted executable `-h` exits 0.
+- The successful tagged workflow sets application version **4.0.0** via its
+  tag-derived linker flag. Go intentionally omits linker flags from build metadata
+  under `-trimpath`; no runtime dashboard-version probe against the installed
+  app's occupied port is claimed.
+- After publication, both the release API and the complete EXE download succeeded
+  **without authentication**. Public bytes match the same SHA-256. Upgrade and
+  known-gap notes were checked on the published release.
+
+Initial publication attempts stalled locally while Windows PowerShell serialized
+filesystem-provider metadata attached to a `Get-Content` string; read-back checks
+confirmed the release remained a draft. Reading plain text with .NET resolved the
+helper issue. Publication used a bounded HTTP request after rechecking source,
+all hosted checks, draft state and downloaded-asset hash. No application source,
+workflow, tag or asset was changed to resolve the helper issue.
+
+Local operational evidence (ignored `dist/`): `release-v4-hosted-checks.log`,
+`release-v4-asset-verification.log`, `release-v4-publication-final.log`,
+`release-v4-final-verification.log`, `release-v4-public-verification.json` and
+`release-v4-hosted/{build-info.txt,help.out,help.err}`. Release notes disclose fresh
+pairing, manual ignore-file rename, trusted membership and remaining manual gaps.
 
 ## Remaining acceptance
 
