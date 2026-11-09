@@ -1,7 +1,7 @@
 # Project validation
 
 ## In progress
-- None. Outbound-initiated transport implementation and automated validation are complete; actual corporate-network acceptance remains pending. Running app and pre-existing untracked `AGENTS.md` remain untouched.
+- Publish user-authorized stable v4.0.1: update release docs, push/tag the intended source, wait for hosted main/tag checks, verify the single tagged EXE, publish with disclosed physical-testing gaps, then verify the public download. User explicitly chose stable over prerelease. Do not install or change the running app; untracked `AGENTS.md` remains untouched.
 
 ## Blocked
 - Outbound transport awaits testing on the user's actual restricted computer/network. It requires permitted outbound TCP 48713 to a reachable member; the reported corporate firewall cause is not proven. Development build is not installed/published. See `review/OUTBOUND-TRANSPORT.md`.

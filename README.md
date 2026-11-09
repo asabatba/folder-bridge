@@ -78,7 +78,7 @@ has been exposed.
 - **Every active member listens on TCP 48713**, not just the creator. Permit inbound
   access only when authorized by your device/network policy. The app does not
   disable firewalls or bypass endpoint protections.
-- **Outbound-initiated connections (development build; not in v4.0.0):** if one
+- **Outbound-initiated connections (v4.0.1 and later):** if one
   computer cannot accept inbound connections, it automatically opens persistent,
   pinned-TLS connections to reachable session members. Those members can pull its
   files and change notifications over those connections. Upgrade both computers

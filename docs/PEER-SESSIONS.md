@@ -75,7 +75,7 @@ Every member serves and pulls. The active listener exposes:
 - `POST /v4/batch/get`: bounded streamed TAR/gzip reads.
 - `GET /v4/changes`: per-member long polling.
 - `POST /v4/reverse`: optional authenticated HTTP/1.1 upgrade to reverse HTTP
-  over the same pinned TLS connection (development enhancement after v4.0.0).
+  over the same pinned TLS connection (v4.0.1 and later).
 
 TLS 1.3 clients pin the destination certificate and present their own certificate.
 Requests also require the session secret and ID, and the claimed device ID must
@@ -89,7 +89,7 @@ loopback literal IP endpoints. Redirects are not followed. Every member listens 
 TCP 48713 in normal use; tests use isolated ephemeral listeners, never the running
 installed app's port.
 
-### Outbound-initiated transport (unreleased)
+### Outbound-initiated transport (v4.0.1)
 
 Each member maintains two outbound reverse connections to each known member,
 with bounded connection attempts and automatic reconnect after disconnection.

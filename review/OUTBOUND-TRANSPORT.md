@@ -7,9 +7,11 @@ unavailable` with a TCP dial timeout to `192.168.1.235:48713`. A corporate inbou
 firewall is suspected, not established: the affected physical network is not
 available to this verification session. No firewall, endpoint policy, installed
 executable or running app was changed. The user subsequently authorized committing
-and pushing these source changes to `origin/main`; release publication and
-installation remain outside scope. This is an unreleased development enhancement
-to v4.
+and pushing these source changes to `origin/main`, then explicitly chose stable
+v4.0.1 publication over a prerelease despite the unverified physical corporate-
+network acceptance. Publication requires passing hosted checks and tagged asset
+verification; the release notes disclose the remaining gaps. Installation remains
+outside scope.
 
 The restricted computer automatically opens two persistent, certificate-pinned
 TLS connections to each known reachable member. An authenticated `/v4/reverse`
