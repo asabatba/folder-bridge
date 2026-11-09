@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.0.2 — Original tray artwork
+
+- Use the user-supplied teal/blue folder-link design for the Windows tray, with amber pause and red error badges instead of unrelated stock icons. Preserve the original artwork and include 16/20/24/32/48/64 pixel variants.
+- Embed the ICO assets in the single EXE; load/cache native handles once and release them on tray shutdown, retaining stock fallback if custom loading fails. No extra runtime, resource compiler, Go dependency or synchronization changes.
+- Add native frame/size/state/cache/resource-lifetime tests. All 103 Windows tests and race tests and 89 executed Linux tests pass; actual taskbar appearance still awaits interactive acceptance. See [validation](review/TRAY-ICON.md). User authorized commit, push and release with pending interactive acceptance disclosed; installation remains separate.
+
 ## v4.0.1 — Outbound-initiated LAN transport
 
 - Add automatic persistent reverse connections so a member that cannot accept inbound TCP can still serve files and change notifications to a reachable member. Both computers need the updated build; outbound access to another member's TCP 48713 remains necessary.

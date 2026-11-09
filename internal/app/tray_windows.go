@@ -2,13 +2,12 @@
 
 package app
 
-// Native Win32 notification-area integration. No UI framework, WebView, or
-// bundled resources are needed. All window messages run on one locked OS thread.
+// Native Win32 notification-area integration with embedded tray artwork. No UI
+// framework or WebView is needed. Window messages run on one locked OS thread.
 import (
 	"log"
 	"os/exec"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
@@ -121,6 +120,7 @@ type windowsTray struct {
 	done           chan struct{}
 	taskbarCreated uint32
 	lastState      string
+	icons          trayIcons
 }
 
 func startTray(app *application) func() {
@@ -148,6 +148,18 @@ func (t *windowsTray) run() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	defer close(t.done)
+	// Load once, not on every three-second state refresh. The system metric
+	// follows Windows' small-icon scaling; ICO frames cover common DPI sizes.
+	size, _, _ := procGetSystemMetrics.Call(49) // SM_CXSMICON
+	if size == 0 {
+		size = 16
+	}
+	var err error
+	t.icons, err = loadTrayIcons(int(size))
+	if err != nil {
+		log.Printf("tray: custom icons unavailable, using Windows fallback: %v", err)
+	}
+	defer t.icons.close()
 	className, _ := syscall.UTF16PtrFromString("FolderBridgeTrayV31")
 	hinstance, _, _ := procGetModuleHandleW.Call(0)
 	wc := trayWindowClass{WndProc: trayCallback, Instance: hinstance, ClassName: className}
@@ -238,14 +250,13 @@ func copyUTF16(dst []uint16, value string) {
 func (t *windowsTray) iconData() notifyIconData {
 	// Obtain the latest synchronization state without a registry query.
 	state := t.app.engine.Snapshot().State
-	iconID := uintptr(32512) // IDI_APPLICATION
-	if strings.Contains(state, "Error") || strings.Contains(state, "Partial") {
-		iconID = 32513 /* IDI_HAND */
+	variant := trayIconVariant(state)
+	hicon := t.icons[variant]
+	if hicon == 0 {
+		// Stock shared icons are a last-resort fallback and must not be destroyed.
+		iconID := [...]uintptr{32512, 32515, 32513}[variant]
+		hicon, _, _ = procLoadIconW.Call(0, iconID)
 	}
-	if state == "Paused" {
-		iconID = 32515 /* IDI_WARNING */
-	}
-	hicon, _, _ := procLoadIconW.Call(0, iconID)
 	data := notifyIconData{Window: t.hwnd.Load(), ID: 1, Flags: nifIcon | nifTip | nifMessage, Callback: wmAppTray, Icon: hicon}
 	data.Size = uint32(unsafe.Sizeof(data))
 	copyUTF16(data.Tip[:], "FolderBridge — "+state)
