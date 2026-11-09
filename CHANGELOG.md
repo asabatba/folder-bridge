@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Outbound-initiated LAN transport
+
+- Add automatic persistent reverse connections so a member that cannot accept inbound TCP can still serve files and change notifications to a reachable member. Both computers need the updated build; outbound access to another member's TCP 48713 remains necessary.
+- Reuse pinned TLS, per-request certificate-bound session authentication, existing v4 reconciliation, guarded streaming/batches, and local safety/ignore policies. Reconnect after interruption; cancel and join reverse connections on stop. No dependency, settings, invitation or history migration.
+- Retain direct transport for v4.0.0 members. No Internet relay, corporate-proxy support, firewall changes or endpoint-policy bypass.
+- Verify bidirectional sync with the restricted listener closed, reconnection, large-file and compressed batch transfers, renames/deletions, authentication and shutdown. See [validation](review/OUTBOUND-TRANSPORT.md). Not yet published or installed.
+
 ## v4.0.0 — Equal-peer LAN sessions
 
 - Replace permanent host/guest setup with Create session / Join session. Every member serves and receives, any member can invite, and reachable members can continue without the creator. One LAN-only session per installation now; multiple sessions and discovery remain deferred.

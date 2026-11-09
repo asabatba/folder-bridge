@@ -454,11 +454,20 @@ func (s *sessionRuntime) exchange(ctx context.Context, m sessionMember, hello se
 		return result, err
 	}
 	var lastErr error
-	for _, addr := range m.Addresses {
+	addresses := append([]string{""}, m.Addresses...)
+	for _, addr := range addresses {
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
-		p := s.peer(addr, m.ID)
+		var p *peer
+		if addr == "" {
+			p = s.reversePeer(m.ID)
+			if p == nil {
+				continue
+			}
+		} else {
+			p = s.peer(addr, m.ID)
+		}
 		reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		resp, e := s.request(reqCtx, p, "POST", "/v4/exchange", bytes.NewReader(body))
 		var w sessionWire
@@ -474,10 +483,14 @@ func (s *sessionRuntime) exchange(ctx context.Context, m sessionMember, hello se
 			s.mu.Lock()
 			result, e = s.apply(ctx, w, p, allow, report)
 			s.mu.Unlock()
-			p.Close()
+			if addr != "" {
+				p.Close()
+			}
 			return result, e
 		}
-		p.Close()
+		if addr != "" {
+			p.Close()
+		}
 		lastErr = e
 	}
 	if lastErr == nil {

@@ -74,6 +74,8 @@ Every member serves and pulls. The active listener exposes:
 - `GET /v4/file`: guarded live file reads.
 - `POST /v4/batch/get`: bounded streamed TAR/gzip reads.
 - `GET /v4/changes`: per-member long polling.
+- `POST /v4/reverse`: optional authenticated HTTP/1.1 upgrade to reverse HTTP
+  over the same pinned TLS connection (development enhancement after v4.0.0).
 
 TLS 1.3 clients pin the destination certificate and present their own certificate.
 Requests also require the session secret and ID, and the claimed device ID must
@@ -86,6 +88,32 @@ while stale gossip cannot restore them. Addresses must be private/link-local/
 loopback literal IP endpoints. Redirects are not followed. Every member listens on
 TCP 48713 in normal use; tests use isolated ephemeral listeners, never the running
 installed app's port.
+
+### Outbound-initiated transport (unreleased)
+
+Each member maintains two outbound reverse connections to each known member,
+with bounded connection attempts and automatic reconnect after disconnection.
+After the authenticated upgrade, the dialing member serves the existing v4
+handlers on that same encrypted socket. The accepting member uses it as an HTTP
+client connection, preferring reverse transport for exchanges, live-file/batch
+reads and change polling, with ordinary direct connections as fallback. Two
+sockets allow a long poll and reconciliation to progress independently.
+
+Certificate pinning is performed before sending the upgrade credentials. Every
+inner request still requires the session ID/secret and a device ID matching the
+actual TLS peer certificate; the transport does not trust a forwarded identity
+header. The route cannot dial arbitrary targets and is not a general proxy.
+Socket admission and cleanup use a separate lock from reconciliation. Stop cancels
+outbound workers, closes hijacked inbound sockets and joins handlers/workers;
+address changes cancel and replace the associated outbound workers.
+
+This permits two-way synchronization when only one member can initiate TCP
+connections. It does not circumvent outbound application/network restrictions,
+provide corporate HTTP proxy support, or add Internet routing/relays. Existing
+v4.0.0 members reject the optional route and retain direct syncing; upgrade both
+sides to benefit. No settings, invitation or durable-history migration is needed.
+Closed-listener, reconnect, streaming/batch/move/delete, authentication and shutdown
+evidence is in [outbound transport validation](../review/OUTBOUND-TRANSPORT.md).
 
 Filesystem events and per-member long polls trigger debounced reconciliation; a
 60-second safety scan and watcher fallback remain. Offline connections have bounded

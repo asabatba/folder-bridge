@@ -78,6 +78,14 @@ has been exposed.
 - **Every active member listens on TCP 48713**, not just the creator. Permit inbound
   access only when authorized by your device/network policy. The app does not
   disable firewalls or bypass endpoint protections.
+- **Outbound-initiated connections (development build; not in v4.0.0):** if one
+  computer cannot accept inbound connections, it automatically opens persistent,
+  pinned-TLS connections to reachable session members. Those members can pull its
+  files and change notifications over those connections. Upgrade both computers
+  for this capability; existing v4 pairing/history is retained. No setting or
+  firewall change is required, but outbound access to another member's TCP 48713
+  must be permitted. If peer traffic is blocked in both directions, this cannot
+  help; there is no Internet relay, corporate-proxy support or policy bypass.
 - The dashboard listens only on `127.0.0.1:47831`; `localhost`, alternate hostnames
   and other ports are rejected to protect session credentials.
 - Members exchange their identities and private LAN IP addresses over authenticated

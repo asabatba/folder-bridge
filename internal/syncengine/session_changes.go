@@ -45,6 +45,10 @@ func (s *sessionRuntime) ensureMonitors() {
 		s.monitorAddresses[id] = addresses
 		s.workers.Add(1)
 		go func(m sessionMember) { defer s.workers.Done(); s.monitorMember(ctx, m) }(m)
+		for i := 0; i < reverseConnections; i++ {
+			s.workers.Add(1)
+			go func(m sessionMember) { defer s.workers.Done(); s.maintainReverse(ctx, m) }(m)
+		}
 	}
 }
 
@@ -52,11 +56,20 @@ func (s *sessionRuntime) monitorMember(ctx context.Context, m sessionMember) {
 	var seen uint64
 	for ctx.Err() == nil {
 		reachable := false
-		for _, addr := range m.Addresses {
+		addresses := append([]string{""}, m.Addresses...)
+		for _, addr := range addresses {
 			if ctx.Err() != nil {
 				return
 			}
-			p := s.peer(addr, m.ID)
+			var p *peer
+			if addr == "" {
+				p = s.reversePeer(m.ID)
+				if p == nil {
+					continue
+				}
+			} else {
+				p = s.peer(addr, m.ID)
+			}
 			pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			resp, err := s.request(pollCtx, p, "GET", "/v4/changes?since="+url.QueryEscape(strconv.FormatUint(seen, 10)), nil)
 			var change changeResponse
@@ -65,7 +78,9 @@ func (s *sessionRuntime) monitorMember(ctx context.Context, m sessionMember) {
 				resp.Body.Close()
 			}
 			cancel()
-			p.Close()
+			if addr != "" {
+				p.Close()
+			}
 			if err == nil {
 				reachable = true
 				if change.Sequence != seen {

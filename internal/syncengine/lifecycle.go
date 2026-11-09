@@ -77,6 +77,7 @@ func (a *Engine) Stop() {
 		s.closing = true
 		s.gate.Unlock()
 		s.cancel()
+		s.closeReverse()
 		_ = s.server.Close()
 		<-s.done
 		s.workers.Wait()
@@ -162,7 +163,7 @@ func (a *Engine) runSessionCycle(s *sessionRuntime) {
 		next := s.nextTry[id]
 		previousMemberError := s.memberStatus[id].Error
 		s.mu.Unlock()
-		if !allow && time.Now().Before(next) {
+		if !allow && time.Now().Before(next) && s.reversePeer(id) == nil {
 			if strings.Contains(previousMemberError, "Safety stop:") {
 				problems = append(problems, errors.New(previousMemberError))
 			}

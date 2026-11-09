@@ -186,6 +186,8 @@ type sessionHello struct {
 }
 
 type sessionRuntime struct {
+	tunnelMu         sync.Mutex
+	reverse          map[string]*reverseTransport
 	mu               sync.Mutex
 	viewMu           sync.RWMutex
 	memberView       []MemberStatus
@@ -255,6 +257,7 @@ func decodeSessionJSON(r io.Reader, out any) error {
 
 func (s *sessionRuntime) handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v4/reverse", s.acceptReverse)
 	mux.HandleFunc("POST /v4/exchange", func(w http.ResponseWriter, r *http.Request) {
 		var hello sessionHello
 		if err := decodeSessionJSON(http.MaxBytesReader(w, r.Body, 64<<20), &hello); err != nil {
