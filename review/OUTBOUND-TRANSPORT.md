@@ -9,9 +9,9 @@ available to this verification session. No firewall, endpoint policy, installed
 executable or running app was changed. The user subsequently authorized committing
 and pushing these source changes to `origin/main`, then explicitly chose stable
 v4.0.1 publication over a prerelease despite the unverified physical corporate-
-network acceptance. Publication requires passing hosted checks and tagged asset
-verification; the release notes disclose the remaining gaps. Installation remains
-outside scope.
+network acceptance. Stable v4.0.1 is now publicly published after passing hosted
+checks and tagged asset verification; the release notes disclose the remaining
+gaps. Installation remains outside scope.
 
 The restricted computer automatically opens two persistent, certificate-pinned
 TLS connections to each known reachable member. An authenticated `/v4/reverse`
@@ -75,6 +75,35 @@ Reproduction script: `dist/outbound-verify.ps1` (local ignored artifact). Logs:
 `dist/outbound-linux-{app,syncengine,fileops}.log`. Windows test logs are UTF-16
 PowerShell Tee-Object output.
 
+## Stable v4.0.1 publication
+
+- Published [FolderBridge v4.0.1](https://github.com/asabatba/folder-bridge/releases/tag/v4.0.1)
+  as the latest stable release (not draft or prerelease).
+- Annotated tag `v4.0.1` selects clean source commit
+  `bbab9657c6cf8547595d713248c8bcc5b02180a2`; implementation commit is `982d5a4`.
+- Hosted source checks on main: [42588828352](https://github.com/asabatba/folder-bridge/actions/runs/42588828352),
+  Windows/Ubuntu tests pass. Tag checks: [42588832950](https://github.com/asabatba/folder-bridge/actions/runs/42588832950),
+  Windows/Ubuntu tests pass, including the workflow's Linux race check.
+- Tagged Windows tests/vet/build and draft creation:
+  [42588832956](https://github.com/asabatba/folder-bridge/actions/runs/42588832956), successful.
+- Single unsigned Windows x64 `FolderBridge.exe`, **7,342,592 bytes**.
+- SHA-256: `1a3d398beb9dc8cc392536d9ca5bec2756e03e59bfe2992c88bdd1ed7640482a`.
+- Downloaded the hosted asset before publication; checked hash/size against GitHub
+  metadata, embedded `vcs.revision` against the tag, `vcs.modified=false`, Windows
+  amd64 target, tag-derived version linker flag and help smoke (exit zero).
+- After publication, independently downloaded the public EXE **without credentials**
+  and verified its hash/size. Unauthenticated latest-release API confirms v4.0.1
+  is public, stable and contains exactly the expected single asset.
+- Verification copies: `dist/release-v401-hosted/FolderBridge.exe` and
+  `FolderBridge-public.exe`. Logs/metadata: `dist/release-v401-hosted-checks.log`,
+  `dist/release-v401-asset-verification.log`, `dist/release-v401-publication.log`,
+  `dist/release-v401-final-verification.log`, `dist/release-v401-public-metadata.json`.
+- Public notes explicitly disclose unverified corporate-network and earlier v4
+  physical/manual acceptance gaps, outbound TCP 48713 requirements, upgrading both
+  members and preserving existing v4 history. The user accepted stable publication
+  with those limitations. No installed/running app or firewall changes were made;
+  existing v3 tags/draft and v4.0.0 release remain untouched.
+
 ## Development artifact
 
 - Path: `dist/outbound/FolderBridge.exe`
@@ -92,7 +121,7 @@ reset is required. Initial pairing should use an invitation from the reachable
 computer, pasted on the restricted one. Existing sessions need no new invitation
 unless a known LAN address is stale.
 
-Physical testing remains required: run the development build on both actual
+Physical testing remains required: run the released v4.0.1 build on both actual
 computers, confirm both member statuses connect, create/edit/delete a disposable
 file in both directions, then test disconnect/reconnect and pause/resume. Back up
 important data before testing. Do not start a second instance alongside an
